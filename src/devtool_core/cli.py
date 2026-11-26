@@ -161,6 +161,6 @@ def main(argv=None):
     except KeyboardInterrupt:
         print("devtool: interrupted", file=sys.stderr)
         return 130
-    except (DevtoolError, OSError, tomllib.TOMLDecodeError) as exc:
+    except (DevtoolError, OSError, tomllib.TOMLDecodeError, json.JSONDecodeError) as exc:
         print(f"devtool: {exc}", file=sys.stderr)
         return 2

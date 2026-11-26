@@ -57,6 +57,7 @@ Built-in action names are conventions: `clone`, `update`, `doctor`, `build`, `te
 - Stage 3 (implemented): explicit local/SSH/container execution, rsync and Registry staging.
 - Stage 4 (implemented): portable directory bundles and OCI-content incremental staging.
 - Stage 5 (implemented): lightweight project providers, integration examples, recorded ad-hoc execution and automation interfaces.
+- Stage 6 (implemented): real-engine OCI round-trip and incremental-cache acceptance, portability and record robustness.
 
 Project-specific build, rollout, data migration and rollback policies stay with each project. The shared core has no product-specific paths, credentials or deployment assumptions.
 
@@ -159,7 +160,7 @@ transfers = [
 
 - `archive-pack` creates a portable, deterministic gzip/tar bundle of a directory and its SHA-256 tree manifest. `archive-unpack` validates paths, file types and links, extracts in a private temporary directory, checks the complete tree, and publishes into a new destination. Neither overwrites an existing output. The internal digest checks integrity, not publisher authenticity; use your project's trusted artifact channel. A project may put its Docker-save archives, non-secret configuration and build artifacts into such a directory to deliver an offline environment.
 - `oci-delta` exports an explicitly tagged local Docker image, validates the OCI save layout and image identity, and stages the content-addressed blobs plus an inventory. It uses the same SSH/rsync transport to send only missing or changed content into a dedicated remote cache, retaining earlier blobs. The target reconstructs **only** the inventory's members, validates the hash of each copied member and refuses unexpected tags or mismatched candidate IDs. The reconstructed archive is loaded into Docker; the identity is checked again. A matching image already present skips the transfer. A conflicting tag fails instead of replacing it. No deployment or registry access is implicit.
-- This adapter intentionally accepts single-image OCI-layout Docker-save archives with consistent OCI and Docker manifests; unsupported legacy or multi-platform layouts fail explicitly. Use `registry` or a project-defined full Docker-save bundle when necessary. The remote cache is dedicated to this project and grows as new blob versions arrive; there is no automatic cache deletion. Real Docker-save/load compatibility must be verified on the actual engine versions before selecting this backend for production. Tests use synthetic OCI fixtures, real local rsync and mocked Docker/SSH calls; no live services are touched.
+- This adapter intentionally accepts single-image OCI-layout Docker-save archives with consistent OCI and Docker manifests; unsupported legacy or multi-platform layouts fail explicitly. Use `registry` or a project-defined full Docker-save bundle when necessary. The remote cache is dedicated to this project and grows as new blob versions arrive; there is no automatic cache deletion. Real Docker-save/load compatibility must be verified on the actual engine versions before selecting this backend for production. The standard tests use synthetic OCI fixtures, real local rsync and mocked Docker/SSH calls. The optional real-engine test below additionally verifies Docker 29.7.2 save/load; no live services are touched.
 
 ## Providers and automation
 
@@ -192,3 +193,8 @@ devtool validate
 `--json` on an executed task returns its operation record on stdout while forwarding command output to stderr; normal exit codes remain available to CI and scripts. Configuration/preflight failures may report an error before an operation exists. `validate` checks the configuration and dependency graph only. `history` and `show` never load providers. Existing schedulers/CI can invoke the same tasks; Devtool itself is not a background scheduler or service orchestrator. The GitHub CI workflow checks supported Python versions and packages the wheel.
 
 For introducing the common tool without changing existing application behavior, see [integration and migration guide](docs/integration.md). Keep each application's rollout logic, tests and credentials in that application's repository/environment.
+
+
+## Optional real Docker integration test
+
+Run `./devtool test docker` only on a development machine with Docker access and rsync. It builds two uniquely tagged `FROM scratch` images without network access, changes only the second application layer, exports them with Docker, reuses the unchanged blob via actual local rsync, reconstructs the new archive and reloads it. It verifies the Docker image identity and removes only its uniquely labelled fixture tags (normal build cache may remain). No container is run, no existing image tag is overwritten, and no Registry or SSH target is contacted. The test passed on Docker Server 29.7.2; compatibility with other engines and deployment environments must be verified separately. The default `./devtool test` remains container-free.

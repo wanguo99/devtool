@@ -121,6 +121,8 @@ class StateStore:
             raise DevtoolError("invalid operation id")
         with (self.operations / operation / "operation.json").open(encoding="utf-8") as stream:
             result = json.load(stream)
+        if not isinstance(result, dict) or result.get("id") != operation or not isinstance(result.get("status"), str):
+            raise DevtoolError("invalid stored operation record")
         if result["status"] == "RUNNING" and not running(result):
             result["status"] = "INTERRUPTED_UNKNOWN"
         return result

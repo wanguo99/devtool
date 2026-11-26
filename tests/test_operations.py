@@ -119,6 +119,21 @@ class Operations(unittest.TestCase):
         self.assertLessEqual(len(buffer.getvalue().encode()),24)
         self.assertTrue(output.truncated)
 
+    def test_unterminated_line_records_truncation(self):
+        plan=self.plan([[sys.executable,'-c',"import sys; sys.stdout.write('x'*40)"]])
+        self.assertEqual(self.run_plan(plan,log_limit=8)[0],0)
+        step=self.latest()['steps'][0]
+        self.assertTrue(step['log_truncated'])
+
+    def test_wrong_record_identity_is_rejected(self):
+        self.store.prepare()
+        directory,record=self.store.create({'requested':'fixture'})
+        path=directory/'operation.json'
+        record['id']='0'*32
+        path.write_text(json.dumps(record))
+        with self.assertRaisesRegex(DevtoolError,'invalid stored'):
+            self.store.read(directory.name)
+
     def test_readonly_check_does_not_create_state(self):
         self.plan([['devtool-definitely-not-present-command']])
         with patch.dict(os.environ, {'DEVTOOL_STATE_HOME':str(self.base/'state')}), contextlib.redirect_stdout(io.StringIO()) as capture:

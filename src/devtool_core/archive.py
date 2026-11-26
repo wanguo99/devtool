@@ -94,7 +94,8 @@ def pack_directory(source: Path, output: Path):
             archive.addfile(file_info("manifest.json", 0o644, len(metadata)), io.BytesIO(metadata))
             write_file(archive, "payload", source)
             for path in sorted(source.rglob("*")):
-                write_file(archive, "payload/" + path.relative_to(source).as_posix(), path)
+                name = member_name("payload/" + path.relative_to(source).as_posix())
+                write_file(archive, name, path)
         if tree_identity(source)["sha256"] != identity["sha256"]:
             raise DevtoolError("bundle source changed during export")
         # Hard-link publication is atomic and refuses an existing output path.

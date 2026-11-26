@@ -155,13 +155,13 @@ def run_step(step: Step, stream, redactor, log_limit, console=None):
                     else:
                         selector.unregister(key.fileobj)
             code = process.wait()
-            return (code if code >= 0 else 128 - code), output.truncated
     except BaseException:
         stop_process(process)
         raise
     finally:
         output.finish()
         process.stdout.close()
+    return (code if code >= 0 else 128 - code), output.truncated
 
 
 def execute(plan: Plan, *, state_root: Path | None = None, log_limit=LOG_LIMIT, json_output=False) -> int:
@@ -177,9 +177,12 @@ def execute(plan: Plan, *, state_root: Path | None = None, log_limit=LOG_LIMIT, 
         print(f"[devtool] operation {record['id']}", file=sys.stderr, flush=True)
         code = 0
         current = None
+        steps_by_task = {}
+        for step in plan.steps:
+            steps_by_task.setdefault(step.task, []).append(step)
         try:
             for name in plan.tasks:
-                for step in (s for s in plan.steps if s.task == name):
+                for step in steps_by_task.get(name, ()):
                     label = f"{len(record['steps'])+1:03d}-{step.task}-{step.index}.log"
                     current = {"task": step.task, "index": step.index, "status": "RUNNING",
                                "started_at": now(), "log": label}

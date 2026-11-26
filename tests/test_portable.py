@@ -80,6 +80,13 @@ class PortableTests(unittest.TestCase):
         with self.assertRaisesRegex(DevtoolError,'does not match'): unpack_directory(tampered,self.root/'destination')
         self.assertFalse((self.root/'destination').exists())
 
+    def test_export_rejects_nonportable_member_name(self):
+        source=self.root/'source';source.mkdir();(source/'name\\with-backslash').write_text('fixture')
+        bundle=self.root/'bundle.tar.gz'
+        with self.assertRaisesRegex(DevtoolError,'unsafe archive path'):
+            pack_directory(source,bundle)
+        self.assertFalse(bundle.exists())
+
     def test_archive_and_oci_plans(self):
         config=self.root/'devtool.toml'; config.write_text('''schema=1
 [project]
@@ -114,7 +121,7 @@ transfers=[{kind="oci-delta",target="lab",image="example.invalid/app:one",destin
         shared={m['path'] for m in first_manifest['entries']}&{m['path'] for m in second_manifest['entries']}
         self.assertIn('blobs/sha256/'+digest(b'shared immutable base'),shared)
         report=sync(staged2)
-        self.assertNotIn(digest(b'shared immutable base'),report)
+        self.assertFalse(any(digest(b'shared immutable base') in line for line in report.splitlines() if line.startswith('>f')))
         output=self.root/'reconstructed.tar'; oci.reconstruct(cache,output,oci.identity_digest(second_manifest))
         with tarfile.open(output,'r:') as rebuilt:
             self.assertEqual({m.name:rebuilt.extractfile(m).read() for m in rebuilt if m.isfile()},files)

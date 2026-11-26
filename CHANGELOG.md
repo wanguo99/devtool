@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.1 — Stage 6: real-engine acceptance and polish
+
+- Add an explicit, isolated `test docker` integration task. Docker Server 29.7.2 built two scratch images, saved both as OCI archives, reused an unchanged blob with actual local rsync, and loaded the reconstructed candidate with the original image identity. The fixture tags were removed. No service ran or remote host was contacted.
+- Correct the final unterminated log-line truncation record, validate stored record identities and reject nonportable bundle member names during export. The first real delta check treated a metadata-only rsync timestamp change as a retransmission; the corrected test distinguishes data-transfer itemization.
+- Unit/CLI tests: 42 passed.
+
 ## 0.5.0 — Stage 5: project providers and automation
 
 - Add explicitly enabled project-local providers, configuration validation, direct local `exec`, JSON operation results and migration/bridge examples.
