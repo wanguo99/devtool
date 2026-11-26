@@ -1,0 +1,21 @@
+schema = 1
+
+[project]
+name = "example"
+
+[parameters.message]
+type = "string"
+default = "hello"
+
+[tasks."test.all"]
+commands = [["python3", "-c", "print('checking...')"]]
+
+[tasks."build.web"]
+commands = [["python3", "-c", "import sys; print(sys.argv[1])", "{{message}}"]]
+
+[tasks."build.all"]
+dependencies = ["build.web"]
+
+[tasks.prepare]
+description = "Run the checks then the build"
+dependencies = ["test.all", "build.all"]

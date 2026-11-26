@@ -1,0 +1,7 @@
+#!/bin/sh
+# Source-tree launcher; the project is discovered from the caller's directory.
+set -eu
+root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
+export PYTHONPATH="$root/src${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONDONTWRITEBYTECODE=1
+exec python3 -m devtool_core "$@"

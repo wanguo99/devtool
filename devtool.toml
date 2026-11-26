@@ -1,0 +1,21 @@
+schema = 1
+
+[project]
+name = "devtool"
+
+[defaults]
+module = "all"
+
+[tasks."test.all"]
+description = "Run the devtool unit and CLI tests"
+commands = [["python3", "-m", "unittest", "discover", "-s", "tests", "-v"]]
+env = { PYTHONPATH = "src", PYTHONDONTWRITEBYTECODE = "1" }
+
+[tasks."check"]
+description = "Check the repository and run the test suite"
+commands = [["git", "diff", "--check"]]
+dependencies = ["test.all"]
+
+[tasks."build.all"]
+description = "Build an installable wheel (requires a local build backend)"
+commands = [["python3", "-m", "pip", "wheel", "--no-deps", ".", "--wheel-dir", "dist"]]
