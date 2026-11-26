@@ -9,6 +9,7 @@ import re
 import shlex
 import subprocess
 import sys
+import tarfile
 
 from .artifacts import describe
 from .executors import absolute_remote, ssh_base, ssh_command, remote_child
@@ -43,7 +44,9 @@ def target_flags(target):
 
 def transfer_command(transfer, target, render, root):
     kind = transfer["kind"]
-    command = [sys.executable, "-m", "devtool_core.transport", kind, *target_flags(target)]
+    command = [sys.executable, "-m", "devtool_core.transport", kind]
+    if target is not None:
+        command += target_flags(target)
     if kind == "rsync":
         source = local_child(root, render(transfer["source"]))
         destination = render(transfer["destination"])
@@ -53,6 +56,14 @@ def transfer_command(transfer, target, render, root):
         image = image_ref(render(transfer["image"]))
         remote = image_ref(render(transfer.get("remote_image", transfer["image"])))
         command += ["--image", image, "--remote-image", remote]
+    elif kind == "oci-delta":
+        image = image_ref(render(transfer["image"]))
+        destination = render(transfer["destination"])
+        remote_child(target.workdir, destination)
+        command += ["--image", image, "--destination", destination]
+    elif kind in ("archive-pack", "archive-unpack"):
+        command += ["--source", str(local_child(root,render(transfer["source"]))),
+                    "--destination", str(local_child(root,render(transfer["destination"])))]
     else:
         raise DevtoolError(f"unsupported transfer: {kind}")
     return tuple(command)
@@ -115,9 +126,14 @@ def rsync_tree(target, source: Path, destination: str):
     print(json.dumps({"transport": "rsync", "destination": full, "artifact": identity}), flush=True)
 
 
-def docker_identity(image, target=None):
+def docker_identity(image, target=None, *, missing_ok=False):
     argv = ["docker", "image", "inspect", "--format", "{{.Id}} {{.Os}}/{{.Architecture}}", image]
-    result = (remote(target, argv, capture_output=True, text=True) if target else run(argv, capture_output=True, text=True))
+    try:
+        result = (remote(target, argv, capture_output=True, text=True) if target else run(argv, capture_output=True, text=True))
+    except subprocess.CalledProcessError as exc:
+        if missing_ok and any(mark in (exc.stderr or "").lower() for mark in ("no such image", "no such object")):
+            return None
+        raise
     value = result.stdout.strip()
     if not re.fullmatch(r"sha256:[0-9a-f]{64} [A-Za-z0-9_/-]+", value):
         raise DevtoolError("invalid or ambiguous Docker image identity")
@@ -138,7 +154,7 @@ def registry(target, image, remote_image):
 def parser():
     root = argparse.ArgumentParser(description=__doc__)
     sub = root.add_subparsers(dest="action", required=True)
-    for action in ("rsync", "registry"):
+    for action in ("rsync", "registry", "oci-delta"):
         p = sub.add_parser(action)
         p.add_argument("--host", required=True)
         p.add_argument("--port", type=int, default=22)
@@ -147,9 +163,19 @@ def parser():
         if action == "rsync":
             p.add_argument("--source", required=True, type=Path)
             p.add_argument("--destination", required=True)
-        else:
+        elif action == "registry":
             p.add_argument("--image", required=True)
             p.add_argument("--remote-image", required=True)
+        else:
+            p.add_argument("--image", required=True)
+            p.add_argument("--destination", required=True)
+    for action in ("archive-pack", "archive-unpack"):
+        p = sub.add_parser(action)
+        p.add_argument("--source", type=Path, required=True)
+        p.add_argument("--destination", type=Path, required=True)
+    load = sub.add_parser("load-oci")
+    load.add_argument("--path", type=Path, required=True)
+    load.add_argument("--sha256", required=True)
     prepare = sub.add_parser("prepare-tree")
     prepare.add_argument("--root", required=True, type=Path)
     prepare.add_argument("--destination", required=True)
@@ -168,15 +194,25 @@ def main(argv=None):
             if not HEX.fullmatch(args.sha256) or tree_identity(args.path)["sha256"] != args.sha256:
                 raise DevtoolError("remote tree SHA-256 differs from source; no activation performed")
             print("tree identity verified")
+        elif args.action in ("archive-pack", "archive-unpack"):
+            from .archive import pack_directory, unpack_directory
+            func = pack_directory if args.action == "archive-pack" else unpack_directory
+            print(json.dumps(func(args.source,args.destination)),flush=True)
+        elif args.action == "load-oci":
+            from .oci import load_candidate
+            load_candidate(args.path,args.sha256)
         else:
             target = Target("transfer", "ssh", absolute_remote(args.workdir), args.host, args.port, args.identity)
             ssh_base(target)
             if args.action == "rsync":
                 rsync_tree(target, args.source, args.destination)
-            else:
+            elif args.action == "registry":
                 registry(target, args.image, args.remote_image)
+            else:
+                from .oci import send_candidate
+                send_candidate(target,args.image,args.destination)
         return 0
-    except (DevtoolError, OSError, subprocess.SubprocessError) as exc:
+    except (ValueError, OSError, subprocess.SubprocessError, tarfile.TarError) as exc:
         print(f"devtool transport: {exc}", file=sys.stderr)
         return 1
 

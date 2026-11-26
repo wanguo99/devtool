@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.0 — Stage 4: portable and OCI artifacts
+
+- Add deterministic directory bundle export/import, validation of archive paths and links, and manifest-verified atomic import without overwrite.
+- Add OCI Docker-save blob staging, rsync reuse, exact inventory reconstruction, image identity verification and protection against unexpected image tags or replacement. Unsupported archive formats are rejected explicitly.
+- Unit/CLI tests: 32 passed, including actual local archive round trips and rsync cache reuse. Docker loading and remote execution are tested with fixtures; live engine compatibility remains to be verified.
+
 ## 0.3.0 — Stage 3: execution targets and staged transfer
 
 - Add explicit SSH and existing Docker container targets, safe argv rendering and read-only plans.

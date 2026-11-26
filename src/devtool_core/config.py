@@ -124,7 +124,10 @@ def read_project(config: Path) -> Project:
             if not isinstance(kind, str):
                 raise DevtoolError(f"transfer kind must be a string in {key}")
             required = {"rsync": {"source", "destination", "target"},
-                        "registry": {"image", "target"}}.get(kind)
+                        "registry": {"image", "target"},
+                        "oci-delta": {"image", "target", "destination"},
+                        "archive-pack": {"source", "destination"},
+                        "archive-unpack": {"source", "destination"}}.get(kind)
             if required is None:
                 raise DevtoolError(f"unknown transfer kind in {key}: {kind!r}")
             optional = {"remote_image"} if kind == "registry" else set()
@@ -133,7 +136,7 @@ def read_project(config: Path) -> Project:
                 raise DevtoolError(f"missing transfer fields in {key}: {', '.join(sorted(required - set(transfer)))}")
             for field, value in transfer.items():
                 text(value, f"{key}.transfer.{field}")
-            if transfer["target"] not in targets or targets[transfer["target"]].kind != "ssh":
+            if "target" in required and (transfer["target"] not in targets or targets[transfer["target"]].kind != "ssh"):
                 raise DevtoolError(f"transfer in {key} requires a named SSH target")
             transfers.append(dict(transfer))
         if not commands and not deps and not transfers:

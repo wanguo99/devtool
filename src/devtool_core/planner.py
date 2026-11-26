@@ -63,9 +63,12 @@ def make_plan(project: Project, requested: str, overrides: dict[str, str] | None
         index = 0
         for transfer in task.transfers:
             index += 1
-            remote_target = resolve_target(project.targets[transfer["target"]], render, project.root)
+            remote_target = resolve_target(project.targets[transfer["target"]], render, project.root) if "target" in transfer else None
             args = transfer_command(transfer, remote_target, render, project.root)
-            steps.append(Step(task.name, index, args, project.root, {}, {}, task.timeout, remote_target.name, "transfer", ("ssh", "rsync" if transfer["kind"] == "rsync" else "docker")))
+            tools = {"rsync": ("ssh", "rsync"), "registry": ("ssh", "docker"),
+                     "oci-delta": ("ssh", "rsync", "docker")}.get(transfer["kind"], ())
+            steps.append(Step(task.name, index, args, project.root, {}, {}, task.timeout,
+                              remote_target.name if remote_target else "local", "transfer", tools))
         for argv in task.commands:
             index += 1
             args = tuple(render(arg) for arg in argv)
