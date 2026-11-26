@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.0 — Self-contained Linux executable
+
+- Package the core and internal helpers as an architecture-specific one-file ELF with an embedded Python runtime. Preserve source-mode execution; use binary self-dispatch and clean system-command library environments when frozen.
+- Add reproducible builder scripts using a Debian Bullseye/Python 3.11 baseline, pinned build wheels, SHA-256 output, and x86_64/AArch64 native CI packaging. The local x86_64 portable executable passed an isolated Debian Bullseye test without Python, including configured commands, forwarded arguments, operation history and nested archive helpers. ARM64 artifacts are built by the native-architecture CI job; no live ARM target was modified.
+- 53 unit/CLI tests passed. The initial in-container dependency installation stalled; host wheel staging followed by offline installation resolved the build.
+
 ## 0.6.0 — Configuration-first command engine
 
 - Make a single `[commands]` table sufficient to use Devtool. Optional project identity is derived from the configuration directory; schema 1 is implicit when omitted. Accept command strings, argv arrays and ordered command arrays.

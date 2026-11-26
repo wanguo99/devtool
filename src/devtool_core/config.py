@@ -135,7 +135,7 @@ def read_project(config: Path, *, allow_providers=False) -> Project:
         identifier(key, "target name")
         if key == "local":
             raise DevtoolError("local is a reserved target name")
-        spec = fields(value, {"kind", "workdir", "host", "port", "identity", "container"}, f"target {key}")
+        spec = fields(value, {"kind", "workdir", "host", "port", "identity", "container", "engine"}, f"target {key}")
         kind = spec.get("kind")
         if kind not in ("ssh", "docker"):
             raise DevtoolError(f"target {key} kind must be ssh or docker")
@@ -148,9 +148,10 @@ def read_project(config: Path, *, allow_providers=False) -> Project:
             if type(port) is not int or not 1 <= port <= 65535:
                 raise DevtoolError(f"invalid SSH port for {key}")
             identity = text(spec["identity"], f"{key}.identity") if "identity" in spec else ""
-            targets[key] = Target(key, kind, workdir, host, port, identity)
+            engine = text(spec["engine"], f"{key}.engine") if "engine" in spec else ""
+            targets[key] = Target(key, kind, workdir, host, port, identity, engine=engine)
         else:
-            if any(name in spec for name in ("host", "port", "identity")):
+            if any(name in spec for name in ("host", "port", "identity", "engine")):
                 raise DevtoolError(f"Docker target {key} cannot specify SSH settings")
             targets[key] = Target(key, kind, workdir, container=text(spec.get("container"), f"{key}.container"))
     tasks: dict[str, Task] = {}

@@ -12,7 +12,10 @@ commands = [["python3", "-m", "unittest", "discover", "-s", "tests", "-v"]]
 env = { PYTHONPATH = "src", PYTHONDONTWRITEBYTECODE = "1" }
 
 [commands]
-build = ["python3", "-m", "pip", "wheel", "--no-deps", ".", "--wheel-dir", "dist"]
+build = "./scripts/build-binary.sh"
+"build.binary" = "./scripts/build-binary.sh"
+"test.binary" = "./scripts/test-binary.sh"
+"build.wheel" = ["python3", "-m", "pip", "wheel", "--no-deps", ".", "--wheel-dir", "dist"]
 diff-check = "git diff --check"
 
 [tasks."check"]

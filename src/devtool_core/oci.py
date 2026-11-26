@@ -12,7 +12,7 @@ import tempfile
 from .archive import read_members, member_name, MAX_METADATA, file_info
 from .artifacts import digest_file
 from .model import DevtoolError
-from .transport import HEX, docker_identity, image_ref, remote, run, rsync_options
+from .transport import HEX, docker_identity, image_ref, remote, remote_helper, run, rsync_options
 from .executors import remote_child, ssh_base
 import shlex
 
@@ -247,9 +247,9 @@ def send_candidate(target, image, destination):
         if docker_identity(image)!=identity:
             raise DevtoolError("candidate image tag changed during export")
         digest=identity_digest(manifest)
-        remote(target,["python3","-m","devtool_core.transport","prepare-tree","--root",target.workdir,"--destination",destination])
+        remote_helper(target,["prepare-tree","--root",target.workdir,"--destination",destination])
         run([*rsync_options(),"-e",shlex.join(ssh_base(target)),"--",str(staged)+"/",target.host+":"+full+"/"])
-        remote(target,["python3","-m","devtool_core.transport","load-oci","--path",full,"--sha256",digest])
+        remote_helper(target,["load-oci","--path",full,"--sha256",digest])
         if docker_identity(image,target)!=identity:
             raise DevtoolError("target candidate identity mismatch")
         print(json.dumps({"transport":"oci-delta","image":image,"identity":identity,

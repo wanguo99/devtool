@@ -145,6 +145,9 @@ def direct_plan(project, args):
 
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] == "_internal":
+        from .runtime import internal_main
+        return internal_main(argv[1:])
     action = selected_action(argv)
     extra = (action,) if ID.fullmatch(action) and action not in (*ACTIONS, *CORE_COMMANDS) else ()
     forwarded = ()

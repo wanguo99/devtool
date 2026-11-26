@@ -4,11 +4,11 @@
 
 Devtool simplifies development and operations by running project-defined commands. It does not prescribe a programming language, build system, deployment strategy, container runtime, or directory layout. Use your existing scripts and tools; let Devtool handle task ordering, execution, exit codes, plans and operation records.
 
-## 1. Install once
+## 1. Build or download the executable
 
-Python 3.11+ on Linux/POSIX. No runtime Python dependencies.
+Use the architecture-appropriate Linux executable. Build it with `./scripts/build-binary.sh` (Docker), or `./devtool build binary` in this source checkout. The output is `dist/linux-$(uname -m)/devtool`; see [binary distribution](docs/binary.md). Copy this single file into any project. The executable contains its Python runtime; configured external commands still require their project tools.
 
-Install in an isolated tool environment (for example, `pipx install .` from this checkout), or use the absolute path to this repository's executable `devtool`. The same executable can run every project. It discovers `devtool.toml` in the current directory or an ancestor; `--project PATH` selects another project directory or configuration file explicitly.
+For source development the repository launcher requires Python 3.11+; no runtime third-party Python dependencies are needed. The executable discovers `devtool.toml` in the current directory or an ancestor; `--project PATH` selects another project directory or configuration file explicitly.
 
 ## 2. Configure the project's existing commands
 
@@ -114,6 +114,7 @@ This repository also uses Devtool for its own checks:
 
 Run an explicitly supplied local command, even without a project config, with `devtool exec -- COMMAND [ARG...]`. CI and external schedulers can call any configured task and use its exit code or JSON result.
 
+- [Executable distribution and builds](docs/binary.md)
 - [Configuration reference](docs/configuration.md)
 - [Advanced execution and delivery capabilities](docs/advanced.md)
 - [Integration guide](docs/integration.md)

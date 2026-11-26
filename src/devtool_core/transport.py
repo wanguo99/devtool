@@ -14,6 +14,7 @@ import tarfile
 from .artifacts import describe
 from .executors import absolute_remote, ssh_base, ssh_command, remote_child
 from .model import DevtoolError, Target
+from .runtime import helper_command, external_environment, frozen
 
 HEX = re.compile(r"[0-9a-f]{64}\Z")
 IMAGE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:/-]*:[A-Za-z0-9_][A-Za-z0-9_.-]*\Z")
@@ -39,12 +40,14 @@ def target_flags(target):
     args = ["--host", target.host, "--port", str(target.port), "--workdir", target.workdir]
     if target.identity:
         args += ["--identity", target.identity]
+    if target.engine:
+        args += ["--engine", target.engine]
     return args
 
 
 def transfer_command(transfer, target, render, root):
     kind = transfer["kind"]
-    command = [sys.executable, "-m", "devtool_core.transport", kind]
+    command = [*helper_command("transport"), kind]
     if target is not None:
         command += target_flags(target)
     if kind == "rsync":
@@ -108,6 +111,7 @@ def rsync_options():
 
 
 def run(argv, **kwargs):
+    kwargs["env"] = external_environment(kwargs.get("env"), executable=argv[0])
     return subprocess.run(argv, check=True, **kwargs)
 
 
@@ -115,14 +119,20 @@ def remote(target, argv, **kwargs):
     return run(ssh_command(target, argv), **kwargs)
 
 
+def remote_helper(target, arguments):
+    engine = target.engine or ("./devtool" if frozen() else "")
+    prefix = [engine, "_internal", "transport"] if engine else ["python3", "-m", "devtool_core.transport"]
+    return remote(target, [*prefix, *arguments])
+
+
 def rsync_tree(target, source: Path, destination: str):
     identity = tree_identity(source)
     full = remote_child(target.workdir, destination)
-    remote(target, ["python3", "-m", "devtool_core.transport", "prepare-tree", "--root", target.workdir, "--destination", destination])
+    remote_helper(target, ["prepare-tree", "--root", target.workdir, "--destination", destination])
     run([*rsync_options(), "-e", shlex.join(ssh_base(target)), "--", str(source.resolve()) + "/", target.host + ":" + full + "/"])
     if tree_identity(source)["sha256"] != identity["sha256"]:
         raise DevtoolError("source tree changed during transfer")
-    remote(target, ["python3", "-m", "devtool_core.transport", "verify-tree", "--path", full, "--sha256", identity["sha256"]])
+    remote_helper(target, ["verify-tree", "--path", full, "--sha256", identity["sha256"]])
     print(json.dumps({"transport": "rsync", "destination": full, "artifact": identity}), flush=True)
 
 
@@ -160,6 +170,7 @@ def parser():
         p.add_argument("--port", type=int, default=22)
         p.add_argument("--workdir", required=True)
         p.add_argument("--identity", default="")
+        p.add_argument("--engine", default="")
         if action == "rsync":
             p.add_argument("--source", required=True, type=Path)
             p.add_argument("--destination", required=True)
@@ -202,7 +213,7 @@ def main(argv=None):
             from .oci import load_candidate
             load_candidate(args.path,args.sha256)
         else:
-            target = Target("transfer", "ssh", absolute_remote(args.workdir), args.host, args.port, args.identity)
+            target = Target("transfer", "ssh", absolute_remote(args.workdir), args.host, args.port, args.identity, engine=args.engine)
             ssh_base(target)
             if args.action == "rsync":
                 rsync_tree(target, args.source, args.destination)

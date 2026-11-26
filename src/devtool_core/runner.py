@@ -16,6 +16,7 @@ from .artifacts import describe
 from .model import Plan, Step, DevtoolError
 from .secrets import Redactor, resolve_environment, secret_values
 from .state import StateStore, now, state_directory
+from .runtime import external_environment
 
 LOG_LIMIT = 8 * 1024 * 1024
 LINE_LIMIT = 64 * 1024
@@ -132,7 +133,7 @@ def run_step(step: Step, stream, redactor, log_limit, console=None):
     missing_tools = [tool for tool in step.tools if not shutil.which(tool)]
     if missing_tools:
         raise DevtoolError("missing transport tools: " + ", ".join(missing_tools))
-    process = subprocess.Popen(step.argv, cwd=step.cwd, env=env, stdout=subprocess.PIPE,
+    process = subprocess.Popen(step.argv, cwd=step.cwd, env=external_environment(env, executable=step.argv[0]), stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT, start_new_session=True)
     output = BoundedOutput(stream, redactor, log_limit, console)
     started = time.monotonic()

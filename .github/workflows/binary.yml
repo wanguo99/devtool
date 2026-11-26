@@ -1,0 +1,32 @@
+name: Linux executables
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  binary:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            arch: x86_64
+          - runner: ubuntu-24.04-arm
+            arch: aarch64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Build self-contained executable
+        run: ./scripts/build-binary.sh
+      - name: Test without host Python
+        run: ./scripts/test-binary.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: devtool-linux-${{ matrix.arch }}
+          path: dist/linux-${{ matrix.arch }}/
+          if-no-files-found: error

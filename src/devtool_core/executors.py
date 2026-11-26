@@ -7,6 +7,7 @@ import re
 import shlex
 
 from .model import DevtoolError, Target
+from .runtime import frozen
 
 SSH_HOST = re.compile(r"[A-Za-z_][A-Za-z0-9_.-]*@[A-Za-z0-9][A-Za-z0-9.-]*\Z")
 CONTAINER = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*\Z")
@@ -30,10 +31,14 @@ def remote_child(root, value, *, allow_root=False):
 
 def resolve_target(target: Target, render, root: Path):
     target = replace(target, workdir=absolute_remote(render(target.workdir)), host=render(target.host),
-                     identity=render(target.identity), container=render(target.container))
+                     identity=render(target.identity), container=render(target.container), engine=render(target.engine))
     if target.kind == "ssh":
         if not SSH_HOST.fullmatch(target.host):
             raise DevtoolError("SSH host must have the form user@hostname or user@IPv4")
+        if not target.engine and frozen():
+            target = replace(target, engine="./devtool")
+        if target.engine and (target.engine.startswith("-") or any(ch in target.engine for ch in ("\0", "\r", "\n"))):
+            raise DevtoolError("invalid remote devtool executable")
         if target.identity:
             path = Path(target.identity).expanduser()
             target = replace(target, identity=str((root / path).resolve()))

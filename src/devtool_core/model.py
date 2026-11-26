@@ -87,6 +87,7 @@ class Target:
     port: int = 22
     identity: str = ""
     container: str = ""
+    engine: str = ""
 
 
 @dataclass(frozen=True)
