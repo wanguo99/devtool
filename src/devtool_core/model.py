@@ -74,6 +74,19 @@ class Task:
     resources: tuple[str, ...] = ("project",)
     timeout: int | None = None
     artifacts: tuple[str, ...] = ()
+    target: str = "local"
+    transfers: tuple[dict[str, str], ...] = ()
+
+
+@dataclass(frozen=True)
+class Target:
+    name: str
+    kind: str
+    workdir: str
+    host: str = ""
+    port: int = 22
+    identity: str = ""
+    container: str = ""
 
 
 @dataclass(frozen=True)
@@ -84,6 +97,7 @@ class Project:
     parameters: dict[str, Parameter]
     aliases: dict[str, str]
     default_module: str = "all"
+    targets: dict[str, Target] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -95,11 +109,14 @@ class Step:
     env: dict[str, str] = field(default_factory=dict)
     secret_env: dict[str, str] = field(default_factory=dict)
     timeout: int | None = None
+    target: str = "local"
+    target_kind: str = "local"
+    tools: tuple[str, ...] = ()
 
     def public(self):
         return {"task": self.task, "index": self.index, "argv": list(self.argv),
                 "cwd": str(self.cwd), "env": self.env, "secret_env": self.secret_env,
-                "timeout": self.timeout}
+                "timeout": self.timeout, "target": self.target, "target_kind": self.target_kind, "tools": list(self.tools)}
 
 
 @dataclass(frozen=True)

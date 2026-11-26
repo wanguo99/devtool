@@ -111,7 +111,7 @@ def main(argv=None):
             if args.check:
                 checks = inspect_plan(plan)
                 data["preflight"] = checks
-                status = 0 if all(check["cwd_exists"] and check["command_available"] and not check["missing_secret_references"] for check in checks) else 1
+                status = 0 if all(check["cwd_exists"] and check["command_available"] and not check["missing_secret_references"] and not check["missing_tools"] for check in checks) else 1
             print(json.dumps(secret_values(plan).data(data), indent=2, ensure_ascii=False))
             return status
         return execute(plan)

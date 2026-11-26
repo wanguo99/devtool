@@ -116,7 +116,8 @@ def inspect_plan(plan: Plan):
         missing = [name for name in step.secret_env.values() if not os.environ.get(name)]
         result.append({"task": step.task, "index": step.index,
                        "cwd_exists": step.cwd.is_dir(), "command_available": bool(command_path(step, env)),
-                       "missing_secret_references": missing})
+                       "missing_secret_references": missing,
+                       "missing_tools": [tool for tool in step.tools if not shutil.which(tool)]})
     return result
 
 
@@ -126,6 +127,9 @@ def run_step(step: Step, stream, redactor, log_limit):
         raise DevtoolError(f"working directory does not exist: {step.cwd}")
     if not command_path(step, env):
         raise DevtoolError(f"command not available: {step.argv[0]}")
+    missing_tools = [tool for tool in step.tools if not shutil.which(tool)]
+    if missing_tools:
+        raise DevtoolError("missing transport tools: " + ", ".join(missing_tools))
     process = subprocess.Popen(step.argv, cwd=step.cwd, env=env, stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT, start_new_session=True)
     output = BoundedOutput(stream, redactor, log_limit)

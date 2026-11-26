@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0 — Stage 3: execution targets and staged transfer
+
+- Add explicit SSH and existing Docker container targets, safe argv rendering and read-only plans.
+- Add typed rsync and Registry transfer steps with source/target identity verification, fail-fast staging and no implicit service activation. Local rsync is exercised with real temporary trees; remote protocols are tested using fixtures, not production hosts.
+- Unit/CLI tests: 26 passed.
+
 ## 0.2.0 — Stage 2
 
 - Add hashed plans, resource locks, private atomic operation records, bounded redacted logs, timeouts and process-group cancellation.

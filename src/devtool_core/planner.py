@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from pathlib import Path
 from .graph import TaskGraph
+from .executors import resolve_target, target_command
+from .transport import transfer_command
 from .model import DevtoolError, PLACEHOLDER, Project, Plan, Step, identifier
 
 
@@ -46,19 +48,34 @@ def make_plan(project: Project, requested: str, overrides: dict[str, str] | None
     resources = set()
     artifacts = {}
     for task in ordered:
-        folder = Path(render(task.cwd))
-        if folder.is_absolute():
-            raise DevtoolError(f"task {task.name} cwd must be relative to the project")
-        cwd = (project.root / folder).resolve()
-        if not cwd.is_relative_to(project.root):
-            raise DevtoolError(f"task {task.name} cwd escapes the project")
+        folder = render(task.cwd)
+        target = None if task.target == "local" else resolve_target(project.targets[task.target], render, project.root)
+        cwd = project.root
+        if target is None:
+            relative = Path(folder)
+            if relative.is_absolute():
+                raise DevtoolError(f"task {task.name} cwd must be relative to the project")
+            cwd = (project.root / relative).resolve()
+            if not cwd.is_relative_to(project.root):
+                raise DevtoolError(f"task {task.name} cwd escapes the project")
         env = {key: render(value) for key, value in task.env.items()}
         resources.update(task.resources)
-        for n, argv in enumerate(task.commands, 1):
+        index = 0
+        for transfer in task.transfers:
+            index += 1
+            remote_target = resolve_target(project.targets[transfer["target"]], render, project.root)
+            args = transfer_command(transfer, remote_target, render, project.root)
+            steps.append(Step(task.name, index, args, project.root, {}, {}, task.timeout, remote_target.name, "transfer", ("ssh", "rsync" if transfer["kind"] == "rsync" else "docker")))
+        for argv in task.commands:
+            index += 1
             args = tuple(render(arg) for arg in argv)
             if not args[0]:
                 raise DevtoolError(f"empty executable in {task.name}")
-            steps.append(Step(task.name, n, args, cwd, env, task.secret_env, task.timeout))
+            if target is not None:
+                args = target_command(target, args, folder, env)
+                steps.append(Step(task.name, index, args, cwd, {}, {}, task.timeout, target.name, target.kind))
+            else:
+                steps.append(Step(task.name, index, args, cwd, env, task.secret_env, task.timeout))
         if task.artifacts:
             paths = []
             for artifact in task.artifacts:
