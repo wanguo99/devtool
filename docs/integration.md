@@ -9,18 +9,12 @@ Install Devtool in an isolated environment, or use the absolute path to this che
 With a `devtool.toml` in the existing project root:
 
 ```toml
-schema = 1
-[project]
-name = "example-app"
-
-[tasks."test.all"]
-commands = [["./devtool", "test", "all"]]
-
-[tasks."build.all"]
-commands = [["./devtool", "build", "all"]]
+[commands]
+test = ["./devtool", "test", "all"]
+build = ["./devtool", "build", "all"]
 
 [tasks."check-build"]
-dependencies = ["test.all", "build.all"]
+dependencies = ["test", "build"]
 ```
 
 Run the common tool, not the legacy repository-local launcher:
@@ -28,10 +22,10 @@ Run the common tool, not the legacy repository-local launcher:
 ```sh
 /path/to/common/devtool --project . plan build
 /path/to/common/devtool --project . test
-/path/to/common/devtool --project . task check-build
+/path/to/common/devtool --project . check-build
 ```
 
-For a platform-dependent old CLI, declare a parameter and include its explicit option in the argument vector. Keep each project's actual semantics: fetching source (`update` in some projects) and updating running services (`update` in others) are not interchangeable. If desired, map the old action name to a canonical task through `[aliases]`.
+For a platform-dependent old CLI, simply pass through options, for example `/path/to/common/devtool --project . build -- --platform arm64`. If the project needs defaults and validation for common flags, it can declare parameters instead. Keep each project's actual semantics: fetching source (`update` in some projects) and updating running services (`update` in others) are not interchangeable. If desired, map the old action name to a canonical task through `[aliases]`.
 
 ## 2. Choose task/transport boundaries
 

@@ -8,8 +8,8 @@ import sys
 import tomllib
 
 from . import __version__
-from .config import CONFIG, ConfigNotFound, find_config, read_project, read_identity
-from .model import DevtoolError, Project, Plan, Step, identifier
+from .config import CONFIG, ConfigNotFound, find_config, read_project, read_identity, project_name
+from .model import DevtoolError, Project, Plan, Step, identifier, ID
 from .planner import action_task, make_plan
 from .runner import execute, inspect_plan
 from .state import StateStore, state_directory
@@ -27,8 +27,8 @@ def task_arguments(parser):
     parser.add_argument("--json", action="store_true", help="print operation JSON; stream command output to stderr")
 
 
-def action_parsers(subparsers):
-    for action in ACTIONS:
+def action_parsers(subparsers, extra_actions=()):
+    for action in (*ACTIONS, *extra_actions):
         item = subparsers.add_parser(action, help=f"run the project's {action} task")
         item.add_argument("module", nargs="?", help="project module (default from configuration)")
         task_arguments(item)
@@ -43,15 +43,36 @@ def action_parsers(subparsers):
     direct.add_argument("argv", nargs=argparse.REMAINDER, help="-- COMMAND [ARG ...]")
 
 
-def parser():
-    root = argparse.ArgumentParser(prog="devtool", description="Project-defined engineering task runner")
+CORE_COMMANDS = {"init", "list", "validate", "plan", "history", "show", "task", "exec"}
+
+
+def selected_action(argv):
+    """Locate the action without loading project code or parsing forwarded arguments."""
+    index = 0
+    while index < len(argv):
+        value = argv[index]
+        if value == "--project":
+            index += 2
+        elif value.startswith("--project=") or value == "--allow-providers":
+            index += 1
+        else:
+            break
+    if index < len(argv) and argv[index] == "plan":
+        index += 1
+    return argv[index] if index < len(argv) else ""
+
+
+def parser(extra_actions=()):
+    root = argparse.ArgumentParser(prog="devtool", description="Project-defined engineering command runner",
+                                   epilog="Any configured command can be invoked by name; use devtool list. Arguments after -- are passed to a single-command task.",
+                                   allow_abbrev=False)
     root.add_argument("--version", action="version", version=__version__)
     root.add_argument("--project", metavar="PATH", help="project directory or TOML file (default: search upward)")
     root.add_argument("--allow-providers", action="store_true", help="enable reviewed project-local Python providers")
     sub = root.add_subparsers(dest="command", required=True)
-    action_parsers(sub)
+    action_parsers(sub, extra_actions)
     plan = sub.add_parser("plan", help="print a read-only execution plan")
-    action_parsers(plan.add_subparsers(dest="planned", required=True))
+    action_parsers(plan.add_subparsers(dest="planned", required=True), extra_actions)
     listing = sub.add_parser("list", help="list available tasks and aliases")
     listing.add_argument("--json", action="store_true")
     sub.add_parser("validate", help="validate configuration without executing tasks")
@@ -78,16 +99,19 @@ def init_project(path: str | None, name: str | None):
     directory = Path(path or Path.cwd()).expanduser().resolve()
     if not directory.is_dir():
         raise DevtoolError("init requires an existing directory")
-    name = identifier(name or directory.name, "project name (use --name to override)")
+    name = identifier(name or project_name(directory), "project name (use --name to override)")
     destination = directory / CONFIG
     content = f'''schema = 1
 
 [project]
 name = "{name}"
 
-[tasks."test.all"]
-description = "Replace this example with your project's checks"
-commands = [["python3", "-c", "print('devtool ready')"]]
+[commands]
+# Replace this example with your project commands.
+test = ["python3", "-c", "print('devtool ready')"]
+# build = "make"
+# deploy = "./scripts/deploy.sh"
+# status = "docker compose ps"
 '''
     with destination.open("x", encoding="utf-8") as stream:
         stream.write(content)
@@ -120,8 +144,18 @@ def direct_plan(project, args):
 
 
 def main(argv=None):
-    args = parser().parse_args(argv)
+    argv = list(sys.argv[1:] if argv is None else argv)
+    action = selected_action(argv)
+    extra = (action,) if ID.fullmatch(action) and action not in (*ACTIONS, *CORE_COMMANDS) else ()
+    forwarded = ()
+    if action != "exec" and "--" in argv:
+        split = argv.index("--")
+        forwarded = tuple(argv[split+1:])
+        argv = argv[:split]
+    args = parser(extra).parse_args(argv)
     try:
+        if forwarded and action in {"init", "list", "validate", "history", "show"}:
+            raise DevtoolError("arguments after -- are only for project tasks or exec")
         if args.command == "init":
             init_project(args.project, args.name)
             return 0
@@ -147,7 +181,7 @@ def main(argv=None):
             plan = direct_plan(project,args)
         else:
             requested = args.name if action == "task" else action_task(project, action, args.module)
-            plan = make_plan(project, requested, overrides(args.overrides))
+            plan = make_plan(project, requested, overrides(args.overrides), forwarded=forwarded)
         if args.command == "plan" or args.dry_run or args.check:
             data = plan.public()
             status = 0

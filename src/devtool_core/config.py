@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import tomllib
+import re
+import shlex
 from pathlib import Path
 from typing import Any
 
@@ -46,29 +48,69 @@ def find_config(project: str | Path | None = None, cwd: Path | None = None) -> P
     raise ConfigNotFound(f"no {CONFIG} found; run devtool init or specify --project")
 
 
+def project_name(directory: Path) -> str:
+    """Derive a stable, filesystem-safe label when no project name is declared."""
+    value = re.sub(r"[^A-Za-z0-9_.-]+", "-", directory.name).strip("._-")
+    if not value:
+        return "project"
+    return value if value[0].isalpha() else "project-" + value
+
+
+def configuration_name(data: dict, config: Path) -> str:
+    schema = data.get("schema", 1)
+    if type(schema) is not int or schema != 1:
+        raise DevtoolError("unsupported configuration schema; expected 1")
+    info = fields(data.get("project", {}), {"name"}, "project")
+    return identifier(info.get("name", project_name(config.parent)), "project name")
+
+
+def parse_command(value, label: str) -> tuple[str, ...]:
+    """Parse shell-like words or an explicit argv; never evaluate shell syntax."""
+    if isinstance(value, str):
+        try:
+            lexer = shlex.shlex(value, posix=True, punctuation_chars="|&;<>")
+            lexer.whitespace_split = True
+            lexer.commenters = ""
+            value = list(lexer)
+        except ValueError as exc:
+            raise DevtoolError(f"invalid command quoting in {label}: {exc}") from exc
+        if any(word and all(ch in "|&;<>" for ch in word) for word in value):
+            raise DevtoolError(f"shell control operators in {label}; use an explicit script or [\"sh\", \"-c\", SCRIPT]")
+    if (not isinstance(value, list) or not value or not value[0] or
+            any(not isinstance(arg, str) or "\0" in arg for arg in value)):
+        raise DevtoolError(f"{label} must be a nonempty command string or argv array")
+    return tuple(value)
+
+
+def parse_commands(value, label: str, *, shortcut=False) -> tuple[tuple[str, ...], ...]:
+    # A compact command is a string or flat argv. Multiple commands use nested
+    # argv arrays; a full task's `commands` also accepts multiple command strings.
+    if isinstance(value, str) or (shortcut and isinstance(value, list) and value and all(isinstance(arg, str) for arg in value)):
+        return (parse_command(value, label),)
+    if not isinstance(value, list):
+        raise DevtoolError(f"{label} must be a command or a sequence of commands")
+    if shortcut and not value:
+        raise DevtoolError(f"empty command in {label}")
+    return tuple(parse_command(item, label) for item in value)
+
+
 def read_identity(config: Path) -> Project:
     """Read only the project identity; history and direct commands need no providers."""
     config = config.resolve()
     with config.open("rb") as stream:
         data = tomllib.load(stream)
-    if type(data.get("schema")) is not int or data["schema"] != 1:
-        raise DevtoolError("configuration requires schema = 1")
-    info = fields(data.get("project",{}), {"name"}, "project")
-    return Project(identifier(info.get("name"),"project name"),config.parent,{},{},{})
+    return Project(configuration_name(data, config), config.parent, {}, {}, {})
 
 
 def read_project(config: Path, *, allow_providers=False) -> Project:
     config = config.resolve()
     with config.open("rb") as stream:
         data = tomllib.load(stream)
-    fields(data, {"schema", "project", "defaults", "parameters", "aliases", "tasks", "targets", "providers"}, "configuration")
-    if type(data.get("schema")) is not int or data["schema"] != 1:
-        raise DevtoolError("configuration requires schema = 1")
-    info = fields(data.get("project", {}), {"name"}, "project")
-    name = identifier(info.get("name"), "project name")
+    fields(data, {"schema", "project", "defaults", "parameters", "aliases", "tasks", "targets", "providers", "commands"}, "configuration")
+    name = configuration_name(data, config)
     defaults = fields(data.get("defaults", {}), {"module"}, "defaults")
     module = identifier(defaults.get("module", "all"), "default module")
-    data = extend_config(data, config, allow_providers)
+    data = extend_config(data, config, allow_providers, name)
     parameters = {}
     for key, value in mapping(data.get("parameters", {}), "parameters").items():
         if not NAME.fullmatch(key) or SENSITIVE.search(key):
@@ -112,7 +154,12 @@ def read_project(config: Path, *, allow_providers=False) -> Project:
                 raise DevtoolError(f"Docker target {key} cannot specify SSH settings")
             targets[key] = Target(key, kind, workdir, container=text(spec.get("container"), f"{key}.container"))
     tasks: dict[str, Task] = {}
+    for key, value in mapping(data.get("commands", {}), "commands").items():
+        identifier(key, "command name")
+        tasks[key] = Task(key, commands=parse_commands(value, f"commands.{key}", shortcut=True))
     for key, value in mapping(data.get("tasks", {}), "tasks").items():
+        if key in tasks:
+            raise DevtoolError(f"duplicate task {key!r} in commands and tasks")
         identifier(key, "task name")
         spec = fields(value, {"description", "dependencies", "commands", "cwd", "env", "secret_env", "resources", "timeout", "artifacts", "target", "transfers"}, f"task {key}")
         description = spec.get("description", "")
@@ -121,15 +168,7 @@ def read_project(config: Path, *, allow_providers=False) -> Project:
         deps = strings(spec.get("dependencies", []), f"{key}.dependencies")
         if len(set(deps)) != len(deps):
             raise DevtoolError(f"duplicate dependencies in {key}")
-        raw_commands = spec.get("commands", [])
-        if not isinstance(raw_commands, list):
-            raise DevtoolError(f"{key}.commands must be an array of argv arrays")
-        commands = []
-        for command in raw_commands:
-            if not isinstance(command, list) or not command or any(not isinstance(arg, str) or "\0" in arg for arg in command) or not command[0]:
-                raise DevtoolError(f"{key}.commands requires nonempty argv arrays with a nonempty executable")
-            commands.append(tuple(command))
-        commands = tuple(commands)
+        commands = parse_commands(spec.get("commands", []), f"{key}.commands")
         raw_transfers = spec.get("transfers", [])
         if not isinstance(raw_transfers, list):
             raise DevtoolError(f"{key}.transfers must be an array of tables")

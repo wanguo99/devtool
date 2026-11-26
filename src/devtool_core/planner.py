@@ -3,8 +3,6 @@ from __future__ import annotations
 
 from pathlib import Path
 from .graph import TaskGraph
-from .executors import resolve_target, target_command
-from .transport import transfer_command
 from .model import DevtoolError, PLACEHOLDER, Project, Plan, Step, identifier
 
 
@@ -20,9 +18,11 @@ def action_task(project: Project, action: str, module: str | None = None) -> str
     raise DevtoolError(f"no task for {action} {module or project.default_module}; use devtool list")
 
 
-def make_plan(project: Project, requested: str, overrides: dict[str, str] | None = None) -> Plan:
+def make_plan(project: Project, requested: str, overrides: dict[str, str] | None = None, *, forwarded: tuple[str, ...] = ()) -> Plan:
     requested = project.aliases.get(requested, requested)
     ordered = TaskGraph(project.tasks).order((requested,))
+    if forwarded and (len(project.tasks[requested].commands) != 1 or any(not isinstance(arg, str) or "\0" in arg for arg in forwarded)):
+        raise DevtoolError("arguments after -- require a requested task with exactly one command")
     overrides = overrides or {}
     unknown = set(overrides) - set(project.parameters)
     if unknown:
@@ -49,7 +49,10 @@ def make_plan(project: Project, requested: str, overrides: dict[str, str] | None
     artifacts = {}
     for task in ordered:
         folder = render(task.cwd)
-        target = None if task.target == "local" else resolve_target(project.targets[task.target], render, project.root)
+        target = None
+        if task.target != "local":
+            from .executors import resolve_target
+            target = resolve_target(project.targets[task.target], render, project.root)
         cwd = project.root
         if target is None:
             relative = Path(folder)
@@ -62,6 +65,8 @@ def make_plan(project: Project, requested: str, overrides: dict[str, str] | None
         resources.update(task.resources)
         index = 0
         for transfer in task.transfers:
+            from .executors import resolve_target
+            from .transport import transfer_command
             index += 1
             remote_target = resolve_target(project.targets[transfer["target"]], render, project.root) if "target" in transfer else None
             args = transfer_command(transfer, remote_target, render, project.root)
@@ -72,9 +77,12 @@ def make_plan(project: Project, requested: str, overrides: dict[str, str] | None
         for argv in task.commands:
             index += 1
             args = tuple(render(arg) for arg in argv)
+            if task.name == requested:
+                args += tuple(forwarded)
             if not args[0]:
                 raise DevtoolError(f"empty executable in {task.name}")
             if target is not None:
+                from .executors import target_command
                 args = target_command(target, args, folder, env)
                 steps.append(Step(task.name, index, args, cwd, {}, {}, task.timeout, target.name, target.kind))
             else:

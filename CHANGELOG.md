@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.0 — Configuration-first command engine
+
+- Make a single `[commands]` table sufficient to use Devtool. Optional project identity is derived from the configuration directory; schema 1 is implicit when omitted. Accept command strings, argv arrays and ordered command arrays.
+- Invoke any configured command directly by name, and forward arguments after `--` to the selected single-command task. Existing full tasks, typed parameters, aliases, providers and optional delivery adapters remain compatible. Local command plans do not load the SSH or transfer modules.
+- Simplify README and starter configuration; separate advanced capabilities into a reference guide. Add minimal example and 9 configuration-first CLI regression tests (51 total).
+
 ## 0.5.1 — Stage 6: real-engine acceptance and polish
 
 - Add an explicit, isolated `test docker` integration task. Docker Server 29.7.2 built two scratch images, saved both as OCI archives, reused an unchanged blob with actual local rsync, and loaded the reconstructed candidate with the original image identity. The fixture tags were removed. No service ran or remote host was contacted.

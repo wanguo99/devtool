@@ -1,0 +1,10 @@
+# A complete entry point for a small project. No provider or backend is needed.
+[commands]
+build = ["python3", "-c", "print('replace with your build command')"]
+test = ["python3", "-c", "print('replace with your test command')"]
+deploy = ["python3", "-c", "print('replace with your deploy script')"]
+status = "python3 --version"
+backup = ["python3", "-c", "import sys; print('backup arguments:', sys.argv[1:])"]
+
+[tasks.release]
+dependencies = ["test", "build", "deploy"]

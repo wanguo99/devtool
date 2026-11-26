@@ -11,14 +11,13 @@ description = "Run the devtool unit and CLI tests"
 commands = [["python3", "-m", "unittest", "discover", "-s", "tests", "-v"]]
 env = { PYTHONPATH = "src", PYTHONDONTWRITEBYTECODE = "1" }
 
+[commands]
+build = ["python3", "-m", "pip", "wheel", "--no-deps", ".", "--wheel-dir", "dist"]
+diff-check = "git diff --check"
+
 [tasks."check"]
 description = "Check the repository and run the test suite"
-commands = [["git", "diff", "--check"]]
-dependencies = ["test.all"]
-
-[tasks."build.all"]
-description = "Build an installable wheel (requires a local build backend)"
-commands = [["python3", "-m", "pip", "wheel", "--no-deps", ".", "--wheel-dir", "dist"]]
+dependencies = ["test.all", "diff-check"]
 
 [tasks."test.docker"]
 description = "Opt-in real Docker 29 OCI save/rsync/reload integration (isolated scratch images only)"

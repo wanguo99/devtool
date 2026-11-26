@@ -17,16 +17,14 @@ class ProviderContext:
     project: str
 
 
-def extend_config(data: dict, config: Path, allow: bool):
+def extend_config(data: dict, config: Path, allow: bool, project_name: str):
     providers = data.pop("providers", [])
     if not isinstance(providers,list) or any(not isinstance(value,str) or not value for value in providers):
         raise DevtoolError("providers must be a list of project-relative Python files")
     if providers and not allow:
         raise DevtoolError("this project declares Python providers; review them and pass --allow-providers to enable")
     root = config.parent
-    info = data.get("project",{})
-    name = info.get("name","") if isinstance(info,dict) else ""
-    context = ProviderContext(root,config,name)
+    context = ProviderContext(root,config,project_name)
     allowed = {"tasks","parameters","targets","aliases"}
     for relative in providers:
         item=Path(relative)
