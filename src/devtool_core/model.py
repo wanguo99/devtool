@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 import re
+import hashlib
+import json
 
 
 class DevtoolError(ValueError):
@@ -13,6 +15,7 @@ class DevtoolError(ValueError):
 
 ID = re.compile(r"[A-Za-z][A-Za-z0-9_.-]*\Z")
 NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
+SENSITIVE = re.compile(r"password|passwd|secret|token|credential|private.?key|authorization|api.?key", re.I)
 PLACEHOLDER = re.compile(r"\{\{([A-Za-z_][A-Za-z0-9_]*)\}\}")
 
 
@@ -67,6 +70,10 @@ class Task:
     commands: tuple[tuple[str, ...], ...] = ()
     cwd: str = "."
     env: dict[str, str] = field(default_factory=dict)
+    secret_env: dict[str, str] = field(default_factory=dict)
+    resources: tuple[str, ...] = ("project",)
+    timeout: int | None = None
+    artifacts: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -86,10 +93,13 @@ class Step:
     argv: tuple[str, ...]
     cwd: Path
     env: dict[str, str] = field(default_factory=dict)
+    secret_env: dict[str, str] = field(default_factory=dict)
+    timeout: int | None = None
 
     def public(self):
         return {"task": self.task, "index": self.index, "argv": list(self.argv),
-                "cwd": str(self.cwd), "env": self.env}
+                "cwd": str(self.cwd), "env": self.env, "secret_env": self.secret_env,
+                "timeout": self.timeout}
 
 
 @dataclass(frozen=True)
@@ -100,8 +110,14 @@ class Plan:
     tasks: tuple[str, ...]
     steps: tuple[Step, ...]
     parameters: dict[str, str | int | bool]
+    resources: tuple[str, ...] = ()
+    artifacts: dict[str, tuple[Path, ...]] = field(default_factory=dict)
 
     def public(self):
-        return {"schema": 1, "project": self.project, "root": str(self.root),
+        value = {"schema": 1, "project": self.project, "root": str(self.root),
                 "requested": self.requested, "tasks": list(self.tasks),
-                "parameters": self.parameters, "steps": [step.public() for step in self.steps]}
+                "parameters": self.parameters, "steps": [step.public() for step in self.steps],
+                "resources": list(self.resources),
+                "artifacts": {task: [str(p) for p in paths] for task, paths in self.artifacts.items()}}
+        value["digest"] = hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        return value

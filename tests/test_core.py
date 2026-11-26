@@ -110,7 +110,7 @@ commands=[["echo","{{mode}}","--jobs={{jobs}}","{{flag}}"]]
 [tasks.x]
 commands=[["%s","-c","from pathlib import Path; Path('first').touch()"], ["%s","-c","raise SystemExit(7)"], ["%s","-c","from pathlib import Path; Path('last').touch()"]]
 ''' % (sys.executable,sys.executable,sys.executable))
-        self.assertEqual(execute(make_plan(project,'x')),7)
+        self.assertEqual(execute(make_plan(project,'x'), state_root=self.root/'state'),7)
         self.assertTrue((self.root/'first').is_file())
         self.assertFalse((self.root/'last').exists())
 

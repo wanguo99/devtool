@@ -43,6 +43,8 @@ def make_plan(project: Project, requested: str, overrides: dict[str, str] | None
         return result
 
     steps: list[Step] = []
+    resources = set()
+    artifacts = {}
     for task in ordered:
         folder = Path(render(task.cwd))
         if folder.is_absolute():
@@ -51,9 +53,22 @@ def make_plan(project: Project, requested: str, overrides: dict[str, str] | None
         if not cwd.is_relative_to(project.root):
             raise DevtoolError(f"task {task.name} cwd escapes the project")
         env = {key: render(value) for key, value in task.env.items()}
-        steps.extend(Step(task.name, n, tuple(render(arg) for arg in argv), cwd, env)
-                     for n, argv in enumerate(task.commands, 1))
+        resources.update(task.resources)
+        for n, argv in enumerate(task.commands, 1):
+            args = tuple(render(arg) for arg in argv)
+            if not args[0]:
+                raise DevtoolError(f"empty executable in {task.name}")
+            steps.append(Step(task.name, n, args, cwd, env, task.secret_env, task.timeout))
+        if task.artifacts:
+            paths = []
+            for artifact in task.artifacts:
+                relative = Path(render(artifact))
+                dest = (project.root / relative).resolve()
+                if relative.is_absolute() or not dest.is_relative_to(project.root) or dest == project.root:
+                    raise DevtoolError(f"artifact path escapes project or points to its root: {artifact}")
+                paths.append(project.root / relative)
+            artifacts[task.name] = tuple(paths)
     unused = set(overrides) - set(used)
     if unused:
         raise DevtoolError("unused parameters for this task: " + ", ".join(sorted(unused)))
-    return Plan(project.name, project.root, requested, tuple(t.name for t in ordered), tuple(steps), used)
+    return Plan(project.name, project.root, requested, tuple(t.name for t in ordered), tuple(steps), used, tuple(sorted(resources)), artifacts)

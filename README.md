@@ -52,9 +52,34 @@ Built-in action names are conventions: `clone`, `update`, `doctor`, `build`, `te
 
 ## Development and roadmap
 
-- Stage 1: configuration, dependency graph, CLI, local plans and execution.
-- Stage 2: operation history, logs, resource locks, timeouts, artifacts and preflight.
+- Stage 1 (implemented): configuration, dependency graph, CLI, local plans and execution.
+- Stage 2 (implemented): operation history, logs, resource locks, timeouts, artifacts and preflight.
 - Stage 3: explicit local/remote/container execution and transfer adapters.
 - Stage 4: project providers, portable integration examples and automation interfaces.
 
 Project-specific build, rollout, data migration and rollback policies stay with each project. The shared core has no product-specific paths, credentials or deployment assumptions.
+
+## Operation records and execution controls
+
+```toml
+[tasks."build.app"]
+commands = [["python3", "scripts/build.py"]]
+resources = ["project", "compiler"]
+timeout = 3600
+artifacts = ["dist/app"]
+env = { BUILD_MODE = "release" }
+
+[tasks."deploy.app"]
+commands = [["python3", "scripts/deploy.py"]]
+secret_env = { APP_TOKEN = "MY_DEPLOY_TOKEN" }
+resources = ["project", "deployment"]
+```
+
+- `timeout` is an optional per-command wall-clock limit in seconds. Omit it for an unbounded build. Ctrl-C stops the owned local subprocess group. An interrupted external operation may require project-specific reconciliation; Devtool does not automatically retry a deployment.
+- `resources` declares locks held for the entire plan. The default is `["project"]`, scoped to the project checkout. Explicitly empty `resources = []` is useful for independent read-only tasks. Tasks using custom locks must share the relevant lock name to exclude one another.
+- `artifacts` declares project-relative files or directories to verify after that task succeeds. Their SHA-256, type and size are recorded (directory identities include relative names, modes, content and links). This records observed outputs, not a promise that an unchanged artifact was newly built.
+- `secret_env` maps child environment names to host environment references. Missing references stop the plan before any commands run; stored plans contain references, not resolved values. Non-secret `env`/parameters must not contain credentials. Known values are redacted from console output and stored logs, but projects should still avoid printing secrets or encoded derivatives. Child commands inherit the caller's environment.
+
+Plans include a canonical SHA-256 digest. `devtool plan build --check` or `devtool build --check` reports current local executable/cwd availability and missing secret references without executing the plan. A dependency may legitimately generate a directory or executable later; execution checks each step when it runs.
+
+The runner creates private per-operation records and bounded step logs under `${XDG_STATE_HOME:-$HOME/.local/state}/devtool/<project>-<checkout-id>/` (or `DEVTOOL_STATE_HOME` as an absolute base directory). These are not build outputs. Use `devtool history --limit 10` or `devtool show <operation-id>` to inspect the recorded result. A RUNNING record whose owner disappeared is presented as `INTERRUPTED_UNKNOWN`: inspect the actual target before retrying. Linux/POSIX is the initial supported execution platform; the core assumes process groups and advisory file locks.

@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from .graph import TaskGraph
-from .model import DevtoolError, NAME, Parameter, Project, Task, identifier, strings, text
+from .model import DevtoolError, NAME, SENSITIVE, Parameter, Project, Task, identifier, strings, text
 
 CONFIG = "devtool.toml"
 
@@ -54,7 +54,7 @@ def read_project(config: Path) -> Project:
     module = identifier(defaults.get("module", "all"), "default module")
     parameters = {}
     for key, value in mapping(data.get("parameters", {}), "parameters").items():
-        if not NAME.fullmatch(key):
+        if not NAME.fullmatch(key) or SENSITIVE.search(key):
             raise DevtoolError(f"invalid parameter name: {key}")
         spec = fields(value, {"type", "default", "choices", "description"}, f"parameter {key}")
         kind = spec.get("type", "string")
@@ -74,7 +74,7 @@ def read_project(config: Path) -> Project:
     tasks: dict[str, Task] = {}
     for key, value in mapping(data.get("tasks", {}), "tasks").items():
         identifier(key, "task name")
-        spec = fields(value, {"description", "dependencies", "commands", "cwd", "env"}, f"task {key}")
+        spec = fields(value, {"description", "dependencies", "commands", "cwd", "env", "secret_env", "resources", "timeout", "artifacts"}, f"task {key}")
         description = spec.get("description", "")
         if not isinstance(description, str):
             raise DevtoolError(f"description for {key} must be a string")
@@ -84,17 +84,31 @@ def read_project(config: Path) -> Project:
         raw_commands = spec.get("commands", [])
         if not isinstance(raw_commands, list):
             raise DevtoolError(f"{key}.commands must be an array of argv arrays")
-        commands = tuple(strings(command, f"{key}.commands") for command in raw_commands)
-        if any(not command for command in commands):
-            raise DevtoolError(f"empty command in {key}")
+        commands = []
+        for command in raw_commands:
+            if not isinstance(command, list) or not command or any(not isinstance(arg, str) or "\0" in arg for arg in command) or not command[0]:
+                raise DevtoolError(f"{key}.commands requires nonempty argv arrays with a nonempty executable")
+            commands.append(tuple(command))
+        commands = tuple(commands)
         if not commands and not deps:
             raise DevtoolError(f"task {key} has neither commands nor dependencies")
         cwd = text(spec.get("cwd", "."), f"{key}.cwd")
         env = mapping(spec.get("env", {}), f"{key}.env")
         for k, v in env.items():
-            if not NAME.fullmatch(k) or not isinstance(v, str) or "\0" in v:
+            if not NAME.fullmatch(k) or SENSITIVE.search(k) or not isinstance(v, str) or "\0" in v:
                 raise DevtoolError(f"invalid environment entry in {key}")
-        tasks[key] = Task(key, description, deps, commands, cwd, dict(env))
+        secret_env = mapping(spec.get("secret_env", {}), f"{key}.secret_env")
+        for k, v in secret_env.items():
+            if not NAME.fullmatch(k) or not isinstance(v, str) or not NAME.fullmatch(v) or k in env:
+                raise DevtoolError(f"invalid secret environment reference in {key}")
+        resources = strings(spec.get("resources", ["project"]), f"{key}.resources")
+        for resource in resources:
+            identifier(resource, "resource")
+        timeout = spec.get("timeout")
+        if timeout is not None and (type(timeout) is not int or timeout < 1):
+            raise DevtoolError(f"timeout for {key} must be a positive integer in seconds")
+        artifacts = strings(spec.get("artifacts", []), f"{key}.artifacts")
+        tasks[key] = Task(key, description, deps, commands, cwd, dict(env), dict(secret_env), resources, timeout, artifacts)
     if not tasks:
         raise DevtoolError("project defines no tasks")
     TaskGraph(tasks)
