@@ -4,6 +4,7 @@ from __future__ import annotations
 import tomllib
 import re
 import shlex
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -108,7 +109,7 @@ def read_project(config: Path, *, allow_providers=False) -> Project:
         data = tomllib.load(stream)
     fields(data, {"schema", "project", "defaults", "parameters", "aliases", "tasks", "targets", "providers", "commands", "sources", "options"}, "configuration")
     name = configuration_name(data, config)
-    defaults = fields(data.get("defaults", {}), {"module"}, "defaults")
+    defaults = fields(data.get("defaults", {}), {"module", "env"}, "defaults")
     module = identifier(defaults.get("module", "all"), "default module")
     data = extend_config(data, config, allow_providers, name)
     parameters = {}
@@ -190,10 +191,11 @@ def read_project(config: Path, *, allow_providers=False) -> Project:
                 raise DevtoolError(f"invalid environment entry in {label}")
         return dict(result)
 
+    global_env=environment(defaults.get("env",{}),"defaults.env")
     tasks: dict[str, Task] = {}
     for key, value in mapping(data.get("commands", {}), "commands").items():
         identifier(key, "command name")
-        tasks[key] = Task(key, commands=parse_commands(value, f"commands.{key}", shortcut=True))
+        tasks[key] = Task(key, commands=parse_commands(value, f"commands.{key}", shortcut=True),env=dict(global_env))
     for key, value in mapping(data.get("tasks", {}), "tasks").items():
         if key in tasks:
             raise DevtoolError(f"duplicate task {key!r} in commands and tasks")
@@ -254,7 +256,7 @@ def read_project(config: Path, *, allow_providers=False) -> Project:
         if not commands and not command_steps and not deps and not transfers and not any(spec.get(field) for field in ("requires","verify_manifests","manifest","artifacts","images","tools")):
             raise DevtoolError(f"task {key} has no configured operation")
         cwd = text(spec.get("cwd", "."), f"{key}.cwd")
-        env = mapping(spec.get("env", {}), f"{key}.env")
+        env = {**global_env,**mapping(spec.get("env", {}), f"{key}.env")}
         for k, v in env.items():
             if not NAME.fullmatch(k) or SENSITIVE.search(k) or not isinstance(v, str) or "\0" in v:
                 raise DevtoolError(f"invalid environment entry in {key}")
@@ -294,7 +296,7 @@ def read_project(config: Path, *, allow_providers=False) -> Project:
         duplicates = set(tasks) & set(generated)
         if duplicates:
             raise DevtoolError("source-generated tasks conflict with explicit tasks: " + ", ".join(sorted(duplicates)))
-        tasks.update(generated)
+        tasks.update({key:replace(task,env={**global_env,**task.env}) for key,task in generated.items()})
     if not tasks:
         raise DevtoolError("project defines no tasks")
     TaskGraph(tasks)

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.0 — Offline image sets and existing-project configurations
+
+- Add complete multi-image Docker save/load bundles with archive, tag and candidate identity checks; the real Docker 29.7.2 scratch-image integration passes both incremental OCI and full two-image bundle reload. Add checksum-pinned file caching and repair.
+- Add shared task environment defaults and configuration files covering the three existing public CLI surfaces without their old root launcher. Preserve project-specific backend code and operation policy rather than copy private application code into the engine. Document direct migration boundaries and verify template plans.
+- 71 unit/CLI tests pass. Rebuilt the portable x86_64 executable and verified it in a Python-free container; all three compatibility configs passed binary/backend help and applicable build-plan smoke checks (61/60/27 configured tasks respectively) without modifying original checkouts.
+
 ## 0.9.0 — Configuration-defined workflow branching and recovery
 
 - Add project-specific CLI option mappings (including mutually exclusive constant flags), derived parameter defaults, conditional task dependencies, independently configured command steps and explicit failure/cleanup actions.

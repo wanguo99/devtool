@@ -1,0 +1,49 @@
+# Compatibility configuration: add only this file and the common executable.
+# Existing project backend modules/scripts remain responsible for domain operations.
+# Pass legacy-only options after --. No target address or credential is configured.
+[project]
+name = "ntn-workspace"
+
+[defaults]
+module = "all"
+env = { PYTHONPATH = "tools/devtool/src" }
+
+[commands]
+"build.all" = ["python3", "-m", "workspace_devtool", "build", "all"]
+"build.core" = ["python3", "-m", "workspace_devtool", "build", "core"]
+"build.ran" = ["python3", "-m", "workspace_devtool", "build", "ran"]
+"build.ue" = ["python3", "-m", "workspace_devtool", "build", "ue"]
+"clone.all" = ["python3", "-m", "workspace_devtool", "clone", "all"]
+"clone.core" = ["python3", "-m", "workspace_devtool", "clone", "core"]
+"clone.legacy-oai" = ["python3", "-m", "workspace_devtool", "clone", "legacy-oai"]
+"clone.ran" = ["python3", "-m", "workspace_devtool", "clone", "ran"]
+"deploy.all" = ["python3", "-m", "workspace_devtool", "deploy", "all"]
+"deploy.core" = ["python3", "-m", "workspace_devtool", "deploy", "core"]
+"deploy.lte" = ["python3", "-m", "workspace_devtool", "deploy", "lte"]
+"deploy.ran" = ["python3", "-m", "workspace_devtool", "deploy", "ran"]
+"deploy.ue" = ["python3", "-m", "workspace_devtool", "deploy", "ue"]
+"legacy-help" = ["python3", "-m", "workspace_devtool", "--help"]
+"legacy-plan" = ["python3", "-m", "workspace_devtool", "plan"]
+"logs" = ["python3", "-m", "workspace_devtool", "deploy", "all", "--action", "logs"]
+"start" = ["python3", "-m", "workspace_devtool", "deploy", "all", "--action", "start"]
+"status" = ["python3", "-m", "workspace_devtool", "deploy", "all", "--action", "status"]
+"stop" = ["python3", "-m", "workspace_devtool", "deploy", "all", "--action", "stop"]
+"update.all" = ["python3", "-m", "workspace_devtool", "update", "all"]
+"update.core" = ["python3", "-m", "workspace_devtool", "update", "core"]
+"update.legacy-oai" = ["python3", "-m", "workspace_devtool", "update", "legacy-oai"]
+"update.ran" = ["python3", "-m", "workspace_devtool", "update", "ran"]
+
+# These checks are already direct engine workflows, without the legacy CLI.
+[tasks."test.units"]
+commands = [["python3", "-m", "unittest", "discover", "-s", "tests", "-p", "test_*.py"]]
+env = { GIT_ALLOW_PROTOCOL = "file", PYTHONDONTWRITEBYTECODE = "1" }
+
+[tasks."test.bootstrap"]
+commands = [["python3", "tests/bootstrap_smoke.py"]]
+env = { GIT_ALLOW_PROTOCOL = "file", PYTHONDONTWRITEBYTECODE = "1" }
+
+[tasks."test.all"]
+dependencies = ["test.units", "test.bootstrap"]
+
+[tasks."test.tool"]
+dependencies = ["test.all"]

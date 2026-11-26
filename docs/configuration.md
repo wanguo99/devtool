@@ -28,6 +28,7 @@ schema = 1                    # optional; schema 1 is the default
 name = "my-project"           # optional; otherwise derived from directory name
 [defaults]
 module = "all"                # optional
+env = { BUILD_ENV = "release" } # optional defaults for ordinary tasks
 
 [commands]
 "build.web" = "pnpm build"

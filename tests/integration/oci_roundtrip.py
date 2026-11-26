@@ -10,6 +10,7 @@ import tempfile
 import uuid
 
 from devtool_core import oci, transport
+from devtool_core.image_bundle import export_images, import_images
 
 
 def run(argv, **kwargs):
@@ -57,8 +58,14 @@ def main():
             oci.load_candidate(cache, oci.identity_digest(second))
             if transport.docker_identity(tags[1]) != second["identity"]:
                 raise RuntimeError("reloaded test image has a different identity")
+            bundle=root/"full-images.tar.gz"
+            full=export_images(bundle,tags)
+            for tag in tags:run(["docker","image","rm",tag])
+            restored=import_images(bundle)
+            if restored["images"]!=full["images"] or not restored["loaded"]:
+                raise RuntimeError("full offline image bundle reload failed")
             print(json.dumps({"docker_server":version,"result":"PASSED","shared_blob_count":len(shared),
-                              "source_archives":2,"reloaded_identity_matches":True,"second_rsync_stats":reports[1]},indent=2))
+                              "source_archives":2,"reloaded_identity_matches":True,"full_bundle_reload":True,"second_rsync_stats":reports[1]},indent=2))
     finally:
         for tag in reversed(created):
             result = subprocess.run(["docker","image","inspect","--format",'{{index .Config.Labels "org.devtool.fixture"}}',tag],capture_output=True,text=True)

@@ -65,3 +65,24 @@ Standalone helper commands also work outside a task plan:
 ```
 
 This copies a runtime directory, strips only debug sections from ELF executables and shared objects using the chosen `strip` tool, and validates that mapped load segments (excluding section-table metadata) remain identical. The input tree is not changed; the destination must not already exist. Pass a cross-toolchain executable with `--strip-command`. Use separate configured build tasks/parameters to choose debug or release artifacts and record the result with an artifact manifest. Project-specific cross compiler, sysroot and CMake/Meson settings remain in the project commands.
+
+## Full image bundles and verified cached files
+
+A complete offline image set can be exported and imported without Registry access:
+
+```sh
+./devtool artifact export-images --output bundles/environment.tar.gz \
+  --image example.invalid/web:v1 --image example.invalid/api:v1
+./devtool artifact import-images --input bundles/environment.tar.gz
+```
+
+The bundle contains the Docker-save archive and its tagged-image identity set. Import validates the directory archive, expected tags and image identities before Docker loading; an existing conflicting tag is rejected, an all-present matching bundle is reused. No containers are started. Include non-secret configuration or other artifacts in a project-defined directory bundle if a complete offline environment requires more than the image set. The real Docker 29.7.2 integration test covers both OCI incremental and two-image full-bundle save/load.
+
+For compiler packages, firmware or other cache files with a published checksum:
+
+```sh
+./devtool artifact fetch --url https://example.invalid/toolchain/package.deb \
+  --output .cache/toolchain/package.deb --sha256 <expected-64-hex-digits>
+```
+
+A matching cache file is reused. A missing or corrupted file is replaced only after a temporary download matches its specified SHA-256 and optional `--size`. A failed download leaves the existing file untouched. URLs and checksums come from project configuration; there is no automatic upstream or credential discovery.

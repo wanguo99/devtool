@@ -40,4 +40,4 @@ The frozen engine runs its internal helpers via the same executable. For SSH fil
 # or ./scripts/test-binary.sh
 ```
 
-This opt-in test copies the executable and a fixture config into an isolated Debian Bullseye container with no Python installed, executes ordinary commands and parameter forwarding, and completes an internal archive export/import. No real project deployment or external service is touched.
+This opt-in test copies the executable and a fixture config into an isolated Debian Bullseye container with no Python installed, executes ordinary commands and parameter forwarding, and completes an internal archive export/import and artifact manifest verification. No real project deployment or external service is touched.

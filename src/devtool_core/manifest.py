@@ -104,15 +104,37 @@ def main(argv=None):
     strip.add_argument("--source",required=True)
     strip.add_argument("--destination",required=True)
     strip.add_argument("--strip-command",default="strip")
+    export=actions.add_parser("export-images",help="create a verified full offline Docker image bundle")
+    export.add_argument("--root",type=Path,default=Path.cwd())
+    export.add_argument("--output",required=True)
+    export.add_argument("--image",action="append",required=True)
+    load=actions.add_parser("import-images",help="verify and load a full offline Docker image bundle")
+    load.add_argument("--root",type=Path,default=Path.cwd())
+    load.add_argument("--input",required=True)
+    fetch=actions.add_parser("fetch",help="download or repair a SHA-256-pinned cache file")
+    fetch.add_argument("--root",type=Path,default=Path.cwd())
+    fetch.add_argument("--url",required=True)
+    fetch.add_argument("--output",required=True)
+    fetch.add_argument("--sha256",required=True)
+    fetch.add_argument("--size",type=int)
     try:
         args=parser.parse_args(argv)
         if args.action == "create":
             result=create_manifest(args.root,args.output,args.file,args.image)
         elif args.action == "verify":
             result=verify_manifest(args.root,args.manifest)
-        else:
+        elif args.action == "strip":
             from .strip_artifacts import strip_tree
             result=strip_tree(project_path(args.root,args.source),project_path(args.root,args.destination),args.strip_command)
+        elif args.action == "export-images":
+            from .image_bundle import export_images
+            result=export_images(project_path(args.root,args.output),args.image)
+        elif args.action == "import-images":
+            from .image_bundle import import_images
+            result=import_images(project_path(args.root,args.input))
+        else:
+            from .fetch import fetch_file
+            result=fetch_file(args.url,project_path(args.root,args.output),args.sha256,args.size)
         print(json.dumps(result,ensure_ascii=False,indent=2));return 0
     except (ValueError,OSError,subprocess.SubprocessError) as exc:
         print(f"devtool artifact: {exc}",file=sys.stderr);return 1

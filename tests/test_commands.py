@@ -118,3 +118,25 @@ build="compile"
         code,_,_=self.call('init')
         self.assertEqual(code,0);self.assertIn('[commands]',self.config.read_text())
         self.assertIn('test',read_project(self.config).tasks)
+
+    def test_global_environment_defaults_apply_to_shortcut_and_full_tasks(self):
+        project=self.load('''[defaults]
+env={COMMON="base", MODE="default"}
+[commands]
+first="echo first"
+[tasks.second]
+commands="echo second"
+env={MODE="override"}
+''')
+        self.assertEqual(make_plan(project,'first').steps[0].env,{'COMMON':'base','MODE':'default'})
+        self.assertEqual(make_plan(project,'second').steps[0].env,{'COMMON':'base','MODE':'override'})
+
+    def test_existing_project_templates_are_complete_task_configs(self):
+        base=Path(__file__).resolve().parents[1]/'examples/projects'
+        cases={'smart-alarm':('build.web','ota.air780egg','verify.browser','export.all'),
+               'zippos':('build.miniapp','remote.prepare','payment.check','notify.retry','beta.recover'),
+               'ntn-workspace':('clone.ran','build.core','deploy.ue','test.all','status')}
+        for name,tasks in cases.items():
+            project=read_project(base/name/'devtool.toml')
+            for task in tasks: self.assertIn(task,project.tasks)
+            for task in project.tasks:make_plan(project,task)

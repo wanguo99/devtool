@@ -115,6 +115,7 @@ This repository also uses Devtool for its own checks:
 Run an explicitly supplied local command, even without a project config, with `devtool exec -- COMMAND [ARG...]`. CI and external schedulers can call any configured task and use its exit code or JSON result.
 
 - [Executable distribution and builds](docs/binary.md)
+- [Existing project compatibility configs](examples/projects/README.md) and [migration coverage](docs/migration-coverage.md)
 - [Configuration reference](docs/configuration.md)
 - [Conditional workflows, custom flags and recovery](docs/workflows.md)
 - [Source groups, artifact manifests and strip](docs/sources-artifacts.md)
