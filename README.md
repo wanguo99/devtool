@@ -97,7 +97,7 @@ Then use `devtool build frontend`, `devtool build backend`, or `devtool build`. 
 | Configuration, command arguments and task dependencies | Named SSH or Docker execution targets |
 | Read-only execution plans and preflight checks | Registry, rsync, OCI and archive transfers |
 | Process execution, output, timeout and exit codes | Python providers for dynamic task definitions |
-| Logs, operation history, resource locks and artifact identities | Project-defined remote rollout and acceptance scripts |
+| Logs, operation history, resource locks and artifact identities | Declarative Git source groups, verified candidate manifests and ELF strip preparation |
 
 The core runs independently of the optional targets and transfers. Ordinary project configurations simply call their existing build/deploy scripts, including scripts that already use Docker or SSH. The tool does not own database migrations, release compatibility, application rollback or production policy. [Advanced features](docs/advanced.md) are available for projects that actually need them.
 
@@ -116,6 +116,7 @@ Run an explicitly supplied local command, even without a project config, with `d
 
 - [Executable distribution and builds](docs/binary.md)
 - [Configuration reference](docs/configuration.md)
+- [Source groups, artifact manifests and strip](docs/sources-artifacts.md)
 - [Advanced execution and delivery capabilities](docs/advanced.md)
 - [Integration guide](docs/integration.md)
 - [Simple example](examples/simple/devtool.toml)

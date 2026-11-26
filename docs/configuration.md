@@ -36,7 +36,7 @@ module = "all"                # optional
 dependencies = ["build.web", "build.server"]
 ```
 
-`devtool build web` resolves `build.web`. If no module is supplied, `devtool build` looks for `build.all` (or the configured default module) and then `build`. `devtool task NAME` selects the exact task or alias; `devtool NAME` is the usual shorthand for arbitrary custom operations. Tool-owned commands `init`, `list`, `validate`, `plan`, `task`, `exec`, `history` and `show` take precedence; use `devtool task NAME` if a configured name overlaps one of them.
+`devtool build web` resolves `build.web`. If no module is supplied, `devtool build` looks for `build.all` (or the configured default module) and then `build`. `devtool task NAME` selects the exact task or alias; `devtool NAME` is the usual shorthand for arbitrary custom operations. Tool-owned commands `init`, `list`, `validate`, `plan`, `task`, `exec`, `history`, `show` and `artifact` take precedence; use `devtool task NAME` if a configured name overlaps one of them.
 
 ## Full task settings
 
@@ -100,3 +100,7 @@ update = "source.fetch"
 ```
 
 Aliases map to existing task names. `update` is not assigned a built-in behavior: each project defines the meaning it intends. Use `devtool validate` to validate the schema and dependency graph, `devtool list` to discover tasks, and `devtool plan COMMAND` before operations whose effects should be reviewed. `--check` reports local preflight status without execution, and `--json` emits a structured operation result for automation. All commands return a nonzero exit status on failure.
+
+## Optional source and artifact declarations
+
+A `[sources]` catalog generates grouped clone/update tasks. Full tasks may declare `tools`, `requires`, `images`, `manifest` and `verify_manifests` for local input and immutable build-output checks. See [source groups and artifact contracts](sources-artifacts.md).

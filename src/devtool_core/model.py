@@ -76,6 +76,11 @@ class Task:
     artifacts: tuple[str, ...] = ()
     target: str = "local"
     transfers: tuple[dict[str, str], ...] = ()
+    requires: tuple[str, ...] = ()
+    verify_manifests: tuple[str, ...] = ()
+    manifest: str = ""
+    images: tuple[str, ...] = ()
+    tools: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -130,12 +135,22 @@ class Plan:
     parameters: dict[str, str | int | bool]
     resources: tuple[str, ...] = ()
     artifacts: dict[str, tuple[Path, ...]] = field(default_factory=dict)
+    required_paths: dict[str, tuple[Path, ...]] = field(default_factory=dict)
+    verify_manifests: dict[str, tuple[Path, ...]] = field(default_factory=dict)
+    manifest_outputs: dict[str, Path] = field(default_factory=dict)
+    images: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    required_tools: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
     def public(self):
         value = {"schema": 1, "project": self.project, "root": str(self.root),
                 "requested": self.requested, "tasks": list(self.tasks),
                 "parameters": self.parameters, "steps": [step.public() for step in self.steps],
                 "resources": list(self.resources),
-                "artifacts": {task: [str(p) for p in paths] for task, paths in self.artifacts.items()}}
+                "artifacts": {task: [str(p) for p in paths] for task, paths in self.artifacts.items()},
+                "required_paths": {task: [str(p) for p in paths] for task, paths in self.required_paths.items()},
+                "verify_manifests": {task: [str(p) for p in paths] for task, paths in self.verify_manifests.items()},
+                "manifest_outputs": {task: str(path) for task, path in self.manifest_outputs.items()},
+                "images": {task: list(images) for task, images in self.images.items()},
+                "required_tools": {task: list(tools) for task,tools in self.required_tools.items()}}
         value["digest"] = hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
         return value

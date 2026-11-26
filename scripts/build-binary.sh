@@ -18,9 +18,14 @@ elif [ "$#" -eq 0 ]; then
     context="$root/.cache/binary-builder-$arch"
     mkdir -p "$context/wheels"
     cp "$root/packaging/Dockerfile" "$root/packaging/requirements.txt" "$context/"
-    python3 -m pip download --only-binary=:all: --python-version 311 \
-        --implementation cp --abi cp311 --platform "manylinux2014_$arch" \
-        --dest "$context/wheels" -r "$context/requirements.txt"
+    download_wheels() {
+        python3 -m pip download --only-binary=:all: --python-version 311 \
+            --implementation cp --abi cp311 --platform "manylinux2014_$arch" \
+            --dest "$context/wheels" -r "$context/requirements.txt" "$@"
+    }
+    if ! download_wheels --no-index --find-links "$context/wheels"; then
+        download_wheels
+    fi
     docker build --network none --tag "$builder" "$context"
     docker run --rm --network none --user "$(id -u):$(id -g)" \
         -e HOME=/tmp -e PYTHONPATH=/src/src -e PYINSTALLER_CONFIG_DIR=/tmp/pyinstaller \

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.0 — Reusable source and artifact preparation
+
+- Add declarative Git source groups, optional legacy exclusions, pinned new checkouts and fetch-only updates. Missing submodules are initialized without resetting existing checkouts. Local Git fixtures verify dirty worktree and submodule preservation.
+- Add required path/tool checks, artifact and Docker image manifests, manifest preflight before task execution, and standalone verified manifest helpers. Add private runtime ELF strip preparation with load-segment identity checks.
+- 61 unit/CLI tests passed, including a real compiled ELF strip/execute test. Rebuild the binary and test the internal helpers without a target Python installation.
+
 ## 0.7.0 — Self-contained Linux executable
 
 - Package the core and internal helpers as an architecture-specific one-file ELF with an embedded Python runtime. Preserve source-mode execution; use binary self-dispatch and clean system-command library environments when frozen.

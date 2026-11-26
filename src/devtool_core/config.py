@@ -106,7 +106,7 @@ def read_project(config: Path, *, allow_providers=False) -> Project:
     config = config.resolve()
     with config.open("rb") as stream:
         data = tomllib.load(stream)
-    fields(data, {"schema", "project", "defaults", "parameters", "aliases", "tasks", "targets", "providers", "commands"}, "configuration")
+    fields(data, {"schema", "project", "defaults", "parameters", "aliases", "tasks", "targets", "providers", "commands", "sources"}, "configuration")
     name = configuration_name(data, config)
     defaults = fields(data.get("defaults", {}), {"module"}, "defaults")
     module = identifier(defaults.get("module", "all"), "default module")
@@ -162,7 +162,7 @@ def read_project(config: Path, *, allow_providers=False) -> Project:
         if key in tasks:
             raise DevtoolError(f"duplicate task {key!r} in commands and tasks")
         identifier(key, "task name")
-        spec = fields(value, {"description", "dependencies", "commands", "cwd", "env", "secret_env", "resources", "timeout", "artifacts", "target", "transfers"}, f"task {key}")
+        spec = fields(value, {"description", "dependencies", "commands", "cwd", "env", "secret_env", "resources", "timeout", "artifacts", "target", "transfers", "requires", "verify_manifests", "manifest", "images", "tools"}, f"task {key}")
         description = spec.get("description", "")
         if not isinstance(description, str):
             raise DevtoolError(f"description for {key} must be a string")
@@ -196,8 +196,8 @@ def read_project(config: Path, *, allow_providers=False) -> Project:
             if "target" in required and (transfer["target"] not in targets or targets[transfer["target"]].kind != "ssh"):
                 raise DevtoolError(f"transfer in {key} requires a named SSH target")
             transfers.append(dict(transfer))
-        if not commands and not deps and not transfers:
-            raise DevtoolError(f"task {key} has neither commands, transfers nor dependencies")
+        if not commands and not deps and not transfers and not any(spec.get(field) for field in ("requires","verify_manifests","manifest","artifacts","images","tools")):
+            raise DevtoolError(f"task {key} has no configured operation")
         cwd = text(spec.get("cwd", "."), f"{key}.cwd")
         env = mapping(spec.get("env", {}), f"{key}.env")
         for k, v in env.items():
@@ -219,9 +219,26 @@ def read_project(config: Path, *, allow_providers=False) -> Project:
             raise DevtoolError(f"unknown target for {key}: {target!r}")
         if target != "local" and secret_env:
             raise DevtoolError(f"remote/container task {key} must use target-side secret configuration")
-        if target != "local" and artifacts:
-            raise DevtoolError(f"task {key} declares local artifacts but uses a non-local target")
-        tasks[key] = Task(key, description, deps, commands, cwd, dict(env), dict(secret_env), resources, timeout, artifacts, target, tuple(transfers))
+        requires = strings(spec.get("requires", []), f"{key}.requires")
+        manifests = strings(spec.get("verify_manifests", []), f"{key}.verify_manifests")
+        manifest = text(spec["manifest"], f"{key}.manifest") if "manifest" in spec else ""
+        images = strings(spec.get("images", []), f"{key}.images")
+        tools = strings(spec.get("tools", []), f"{key}.tools")
+        if target != "local" and (artifacts or manifest or images):
+            raise DevtoolError(f"task {key} declares local outputs but uses a non-local target")
+        if manifest and not (artifacts or images):
+            raise DevtoolError(f"task {key} manifest needs artifacts or images")
+        tasks[key] = Task(name=key, description=description, dependencies=deps, commands=commands, cwd=cwd,
+                          env=dict(env), secret_env=dict(secret_env), resources=resources, timeout=timeout,
+                          artifacts=artifacts, target=target, transfers=tuple(transfers), requires=requires,
+                          verify_manifests=manifests, manifest=manifest, images=images, tools=tools)
+    if "sources" in data:
+        from .sources import source_tasks
+        generated = source_tasks(data["sources"], config.parent)
+        duplicates = set(tasks) & set(generated)
+        if duplicates:
+            raise DevtoolError("source-generated tasks conflict with explicit tasks: " + ", ".join(sorted(duplicates)))
+        tasks.update(generated)
     if not tasks:
         raise DevtoolError("project defines no tasks")
     TaskGraph(tasks)

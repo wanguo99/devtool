@@ -28,6 +28,8 @@ docker run --rm --network none --user "$(id -u):$(id -g)" -e HOME=/tmp -e DEVTOO
     ./devtool export
     ./devtool import
     cmp data/text restored/text
+    ./devtool artifact create --output candidate.json --file restored
+    ./devtool artifact verify --manifest candidate.json
     ./devtool history --limit 1 >/tmp/history.json
     echo "No-Python executable and internal archive helper: PASS"
 '

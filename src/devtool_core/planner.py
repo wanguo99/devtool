@@ -47,6 +47,15 @@ def make_plan(project: Project, requested: str, overrides: dict[str, str] | None
     steps: list[Step] = []
     resources = set()
     artifacts = {}
+    required_paths, verify_manifests, manifest_outputs, images, required_tools = {}, {}, {}, {}, {}
+
+    def local_output(value):
+        relative = Path(render(value))
+        dest = (project.root / relative).resolve()
+        if relative.is_absolute() or ".." in relative.parts or not dest.is_relative_to(project.root) or dest == project.root:
+            raise DevtoolError(f"path escapes project or points to its root: {value}")
+        return project.root / relative
+
     for task in ordered:
         folder = render(task.cwd)
         target = None
@@ -73,7 +82,7 @@ def make_plan(project: Project, requested: str, overrides: dict[str, str] | None
             tools = {"rsync": ("ssh", "rsync"), "registry": ("ssh", "docker"),
                      "oci-delta": ("ssh", "rsync", "docker")}.get(transfer["kind"], ())
             steps.append(Step(task.name, index, args, project.root, {}, {}, task.timeout,
-                              remote_target.name if remote_target else "local", "transfer", tools))
+                              remote_target.name if remote_target else "local", "transfer", tuple(dict.fromkeys((*tools,*task.tools)))))
         for argv in task.commands:
             index += 1
             args = tuple(render(arg) for arg in argv)
@@ -84,19 +93,24 @@ def make_plan(project: Project, requested: str, overrides: dict[str, str] | None
             if target is not None:
                 from .executors import target_command
                 args = target_command(target, args, folder, env)
-                steps.append(Step(task.name, index, args, cwd, {}, {}, task.timeout, target.name, target.kind))
+                steps.append(Step(task.name, index, args, cwd, {}, {}, task.timeout, target.name, target.kind, task.tools))
             else:
-                steps.append(Step(task.name, index, args, cwd, env, task.secret_env, task.timeout))
+                steps.append(Step(task.name, index, args, cwd, env, task.secret_env, task.timeout, tools=task.tools))
+        if task.tools:
+            required_tools[task.name] = task.tools
         if task.artifacts:
-            paths = []
-            for artifact in task.artifacts:
-                relative = Path(render(artifact))
-                dest = (project.root / relative).resolve()
-                if relative.is_absolute() or not dest.is_relative_to(project.root) or dest == project.root:
-                    raise DevtoolError(f"artifact path escapes project or points to its root: {artifact}")
-                paths.append(project.root / relative)
-            artifacts[task.name] = tuple(paths)
+            artifacts[task.name] = tuple(local_output(value) for value in task.artifacts)
+        if task.requires:
+            required_paths[task.name] = tuple(local_output(value) for value in task.requires)
+        if task.verify_manifests:
+            verify_manifests[task.name] = tuple(local_output(value) for value in task.verify_manifests)
+        if task.manifest:
+            manifest_outputs[task.name] = local_output(task.manifest)
+        if task.images:
+            from .transport import image_ref
+            images[task.name] = tuple(image_ref(render(value)) for value in task.images)
     unused = set(overrides) - set(used)
     if unused:
         raise DevtoolError("unused parameters for this task: " + ", ".join(sorted(unused)))
-    return Plan(project.name, project.root, requested, tuple(t.name for t in ordered), tuple(steps), used, tuple(sorted(resources)), artifacts)
+    return Plan(project.name, project.root, requested, tuple(t.name for t in ordered), tuple(steps), used, tuple(sorted(resources)), artifacts, required_paths=required_paths, verify_manifests=verify_manifests,
+                manifest_outputs=manifest_outputs, images=images, required_tools=required_tools)

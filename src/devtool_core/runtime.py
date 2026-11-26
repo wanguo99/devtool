@@ -41,6 +41,10 @@ def internal_main(argv):
     name, *arguments = argv
     if name == "transport":
         from .transport import main
+    elif name == "sources":
+        from .sources import main
+    elif name == "manifest":
+        from .manifest import main
     else:
         print(f"devtool: unknown internal helper {name!r}", file=sys.stderr)
         return 2

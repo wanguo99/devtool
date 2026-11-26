@@ -183,6 +183,18 @@ def execute(plan: Plan, *, state_root: Path | None = None, log_limit=LOG_LIMIT, 
             steps_by_task.setdefault(step.task, []).append(step)
         try:
             for name in plan.tasks:
+                missing = [tool for tool in plan.required_tools.get(name,()) if not shutil.which(tool)]
+                if missing:
+                    raise DevtoolError(f"missing tools for {name}: {', '.join(missing)}")
+                for path in plan.required_paths.get(name, ()):
+                    if not path.resolve().is_relative_to(plan.root.resolve()) or not path.exists():
+                        raise DevtoolError(f"missing required input for {name}: {path}")
+                if name in plan.verify_manifests:
+                    from .manifest import verify_manifest
+                    for path in plan.verify_manifests[name]:
+                        verify_manifest(plan.root,path.relative_to(plan.root))
+                if name in plan.manifest_outputs and plan.manifest_outputs[name].exists():
+                    raise DevtoolError(f"immutable candidate manifest already exists: {plan.manifest_outputs[name]}")
                 for step in steps_by_task.get(name, ()):
                     label = f"{len(record['steps'])+1:03d}-{step.task}-{step.index}.log"
                     current = {"task": step.task, "index": step.index, "status": "RUNNING",
@@ -202,6 +214,17 @@ def execute(plan: Plan, *, state_root: Path | None = None, log_limit=LOG_LIMIT, 
                     current = None
                 for path in plan.artifacts.get(name, ()):
                     record["artifacts"].append(redactor.data({"task": name, **describe(path, plan.root)}))
+                if name in plan.images:
+                    from .transport import docker_identity
+                    for image in plan.images[name]:
+                        record["artifacts"].append(redactor.data({"task":name,"type":"image","image":image,"identity":docker_identity(image)}))
+                if name in plan.manifest_outputs:
+                    from .manifest import create_manifest
+                    output=plan.manifest_outputs[name]
+                    created=create_manifest(plan.root,output.relative_to(plan.root),
+                                            [path.relative_to(plan.root).as_posix() for path in plan.artifacts.get(name,())],
+                                            plan.images.get(name,()))
+                    record["artifacts"].append(redactor.data({"task":name,"type":"manifest","path":str(output),"sha256":created["sha256"]}))
                 store.save(record)
             record["status"] = "SUCCEEDED"
         except KeyboardInterrupt:
@@ -210,7 +233,7 @@ def execute(plan: Plan, *, state_root: Path | None = None, log_limit=LOG_LIMIT, 
         except Timeout as exc:
             code = 124
             record.update(status="TIMED_OUT", error=redactor.text(str(exc)))
-        except (OSError, DevtoolError, subprocess.SubprocessError) as exc:
+        except (OSError, DevtoolError, subprocess.SubprocessError, json.JSONDecodeError) as exc:
             code = code or 1
             record.update(status="FAILED", error=redactor.text(str(exc)))
         finally:

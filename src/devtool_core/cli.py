@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 from pathlib import Path
 import sys
 import tomllib
@@ -43,11 +44,11 @@ def action_parsers(subparsers, extra_actions=()):
     direct.add_argument("argv", nargs=argparse.REMAINDER, help="-- COMMAND [ARG ...]")
 
 
-CORE_COMMANDS = {"init", "list", "validate", "plan", "history", "show", "task", "exec"}
+CORE_COMMANDS = {"init", "list", "validate", "plan", "history", "show", "task", "exec", "artifact"}
 
 
-def selected_action(argv):
-    """Locate the action without loading project code or parsing forwarded arguments."""
+def command_index(argv):
+    """Locate the outer action without loading project code."""
     index = 0
     while index < len(argv):
         value = argv[index]
@@ -57,6 +58,11 @@ def selected_action(argv):
             index += 1
         else:
             break
+    return index
+
+
+def selected_action(argv):
+    index=command_index(argv)
     if index < len(argv) and argv[index] == "plan":
         index += 1
     return argv[index] if index < len(argv) else ""
@@ -76,6 +82,7 @@ def parser(extra_actions=()):
     listing = sub.add_parser("list", help="list available tasks and aliases")
     listing.add_argument("--json", action="store_true")
     sub.add_parser("validate", help="validate configuration without executing tasks")
+    sub.add_parser("artifact", help="create, verify or prepare artifact manifests")
     history = sub.add_parser("history", help="show operation records for this project")
     history.add_argument("--limit", type=int, default=20)
     show = sub.add_parser("show", help="show a single operation record")
@@ -145,6 +152,18 @@ def direct_plan(project, args):
 
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
+    index=command_index(argv)
+    if index<len(argv) and argv[index]=="artifact":
+        from .manifest import main as artifact_main
+        global_parser=argparse.ArgumentParser(add_help=False)
+        global_parser.add_argument("--project")
+        global_parser.add_argument("--allow-providers",action="store_true")
+        prefix=global_parser.parse_args(argv[:index])
+        arguments=argv[index+1:]
+        if prefix.project and not any(a=="--root" or a.startswith("--root=") for a in arguments):
+            project=Path(prefix.project).expanduser().resolve()
+            arguments += ["--root",str(project if project.is_dir() else project.parent)]
+        return artifact_main(arguments)
     if argv and argv[0] == "_internal":
         from .runtime import internal_main
         return internal_main(argv[1:])
@@ -191,7 +210,11 @@ def main(argv=None):
             if args.check:
                 checks = inspect_plan(plan)
                 data["preflight"] = checks
-                status = 0 if all(check["cwd_exists"] and check["command_available"] and not check["missing_secret_references"] and not check["missing_tools"] for check in checks) else 1
+                missing_paths = [str(path) for mapping in (plan.required_paths,plan.verify_manifests) for paths in mapping.values() for path in paths if not path.exists()]
+                data["missing_required_paths"] = missing_paths
+                missing_tools=[tool for tools in plan.required_tools.values() for tool in tools if not shutil.which(tool)]
+                data["missing_required_tools"] = missing_tools
+                status = 0 if not missing_paths and not missing_tools and all(check["cwd_exists"] and check["command_available"] and not check["missing_secret_references"] and not check["missing_tools"] for check in checks) else 1
             print(json.dumps(secret_values(plan).data(data), indent=2, ensure_ascii=False))
             return status
         return execute(plan, json_output=args.json)
