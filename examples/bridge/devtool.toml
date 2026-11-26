@@ -1,0 +1,27 @@
+schema = 1
+
+[project]
+name = "legacy-bridge-example"
+
+[parameters.project_dir]
+type = "string"
+description = "Absolute path to a project with an existing repository-local devtool"
+
+[tasks."doctor.compat"]
+description = "Inspect the existing CLI without invoking a build or deployment"
+commands = [["{{project_dir}}/devtool", "--help"]]
+resources = []
+
+[tasks."preview-build"]
+description = "Ask an existing CLI that supports plan to print a build plan"
+commands = [["{{project_dir}}/devtool", "plan", "build", "all"]]
+resources = []
+
+[parameters.platform]
+type = "string"
+description = "Explicit target platform accepted by the existing tool"
+
+[tasks."preview-cross-build"]
+description = "Print a platform-specific build plan using the existing CLI"
+commands = [["{{project_dir}}/devtool", "plan", "build", "all", "--platform", "{{platform}}"]]
+resources = []

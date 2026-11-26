@@ -56,7 +56,7 @@ Built-in action names are conventions: `clone`, `update`, `doctor`, `build`, `te
 - Stage 2 (implemented): operation history, logs, resource locks, timeouts, artifacts and preflight.
 - Stage 3 (implemented): explicit local/SSH/container execution, rsync and Registry staging.
 - Stage 4 (implemented): portable directory bundles and OCI-content incremental staging.
-- Stage 5: lightweight project providers, integration examples and automation interfaces.
+- Stage 5 (implemented): lightweight project providers, integration examples, recorded ad-hoc execution and automation interfaces.
 
 Project-specific build, rollout, data migration and rollback policies stay with each project. The shared core has no product-specific paths, credentials or deployment assumptions.
 
@@ -160,3 +160,35 @@ transfers = [
 - `archive-pack` creates a portable, deterministic gzip/tar bundle of a directory and its SHA-256 tree manifest. `archive-unpack` validates paths, file types and links, extracts in a private temporary directory, checks the complete tree, and publishes into a new destination. Neither overwrites an existing output. The internal digest checks integrity, not publisher authenticity; use your project's trusted artifact channel. A project may put its Docker-save archives, non-secret configuration and build artifacts into such a directory to deliver an offline environment.
 - `oci-delta` exports an explicitly tagged local Docker image, validates the OCI save layout and image identity, and stages the content-addressed blobs plus an inventory. It uses the same SSH/rsync transport to send only missing or changed content into a dedicated remote cache, retaining earlier blobs. The target reconstructs **only** the inventory's members, validates the hash of each copied member and refuses unexpected tags or mismatched candidate IDs. The reconstructed archive is loaded into Docker; the identity is checked again. A matching image already present skips the transfer. A conflicting tag fails instead of replacing it. No deployment or registry access is implicit.
 - This adapter intentionally accepts single-image OCI-layout Docker-save archives with consistent OCI and Docker manifests; unsupported legacy or multi-platform layouts fail explicitly. Use `registry` or a project-defined full Docker-save bundle when necessary. The remote cache is dedicated to this project and grows as new blob versions arrive; there is no automatic cache deletion. Real Docker-save/load compatibility must be verified on the actual engine versions before selecting this backend for production. Tests use synthetic OCI fixtures, real local rsync and mocked Docker/SSH calls; no live services are touched.
+
+## Providers and automation
+
+Use declarative tasks by default. A complex project can explicitly register Python task providers:
+
+```toml
+schema = 1
+providers = ["tools/provider.py"]
+[project]
+name = "example"
+```
+
+The provider defines `provide(context)` and returns tables for `tasks`, `parameters`, `targets` and/or `aliases`. The same strict schema and DAG validation apply; duplicate definitions fail. Providers are trusted executable project code, so they require explicit `--allow-providers`; they must return descriptions without performing the actual operations. A plain TOML plan does not execute project code. See [provider example](examples/provider/devtool.toml):
+
+```sh
+./devtool --project examples/provider --allow-providers plan task verify
+./devtool --project examples/provider --allow-providers task verify
+```
+
+For a one-off local command, use `devtool exec -- COMMAND ARG...`. It does not require a configuration file, uses the selected project root (or the current directory when no project is present), and records the result using the same runner. `--timeout` limits the command. No shell is inferred; a shell must be explicitly requested as the command. This is a local developer tool, not a remotely accessible command service.
+
+```sh
+devtool exec --timeout 30 -- python3 --version
+devtool plan exec -- python3 --version
+devtool build --json
+devtool list --json
+devtool validate
+```
+
+`--json` on an executed task returns its operation record on stdout while forwarding command output to stderr; normal exit codes remain available to CI and scripts. Configuration/preflight failures may report an error before an operation exists. `validate` checks the configuration and dependency graph only. `history` and `show` never load providers. Existing schedulers/CI can invoke the same tasks; Devtool itself is not a background scheduler or service orchestrator. The GitHub CI workflow checks supported Python versions and packages the wheel.
+
+For introducing the common tool without changing existing application behavior, see [integration and migration guide](docs/integration.md). Keep each application's rollout logic, tests and credentials in that application's repository/environment.

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import json
 from pathlib import Path
 import selectors
 import shlex
@@ -25,10 +26,11 @@ class Timeout(DevtoolError):
 
 
 class BoundedOutput:
-    def __init__(self, stream, redactor: Redactor, limit=LOG_LIMIT):
+    def __init__(self, stream, redactor: Redactor, limit=LOG_LIMIT, console=None):
         self.stream = stream
         self.redactor = redactor
         self.limit = limit
+        self.console = sys.stdout if console is None else console
         self.written = 0
         self.truncated = False
         self.pending = bytearray()
@@ -36,7 +38,7 @@ class BoundedOutput:
 
     def line(self, value: str):
         safe = self.redactor.text(value)
-        print(safe, end="", flush=True)
+        print(safe, end="", file=self.console, flush=True)
         raw = safe.encode("utf-8", errors="replace")
         remaining = self.limit - self.written
         if remaining > 0 and raw:
@@ -121,7 +123,7 @@ def inspect_plan(plan: Plan):
     return result
 
 
-def run_step(step: Step, stream, redactor, log_limit):
+def run_step(step: Step, stream, redactor, log_limit, console=None):
     env = resolve_environment(step)
     if not step.cwd.is_dir():
         raise DevtoolError(f"working directory does not exist: {step.cwd}")
@@ -132,7 +134,7 @@ def run_step(step: Step, stream, redactor, log_limit):
         raise DevtoolError("missing transport tools: " + ", ".join(missing_tools))
     process = subprocess.Popen(step.argv, cwd=step.cwd, env=env, stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT, start_new_session=True)
-    output = BoundedOutput(stream, redactor, log_limit)
+    output = BoundedOutput(stream, redactor, log_limit, console)
     started = time.monotonic()
     exited = None
     try:
@@ -162,7 +164,7 @@ def run_step(step: Step, stream, redactor, log_limit):
         process.stdout.close()
 
 
-def execute(plan: Plan, *, state_root: Path | None = None, log_limit=LOG_LIMIT) -> int:
+def execute(plan: Plan, *, state_root: Path | None = None, log_limit=LOG_LIMIT, json_output=False) -> int:
     if log_limit < 0:
         raise DevtoolError("log limit must be nonnegative")
     store = StateStore(state_root or state_directory(plan.project, plan.root))
@@ -187,7 +189,7 @@ def execute(plan: Plan, *, state_root: Path | None = None, log_limit=LOG_LIMIT) 
                     # O_EXCL avoids replacing a path unexpectedly inserted into the run directory.
                     fd = os.open(directory / label, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
                     with os.fdopen(fd, "w", encoding="utf-8") as stream:
-                        code, truncated = run_step(step, stream, redactor, log_limit)
+                        code, truncated = run_step(step, stream, redactor, log_limit, sys.stderr if json_output else None)
                     current.update(status="SUCCEEDED" if code == 0 else "FAILED", exit_code=code,
                                    finished_at=now(), log_truncated=truncated)
                     store.save(record)
@@ -214,4 +216,6 @@ def execute(plan: Plan, *, state_root: Path | None = None, log_limit=LOG_LIMIT) 
             store.save(record)
         if code:
             print(f"[devtool] {record.get('error', record['status'])}", file=sys.stderr, flush=True)
+        if json_output:
+            print(json.dumps(record, ensure_ascii=False, indent=2))
         return code

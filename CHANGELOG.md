@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.0 — Stage 5: project providers and automation
+
+- Add explicitly enabled project-local providers, configuration validation, direct local `exec`, JSON operation results and migration/bridge examples.
+- Add CI across Python 3.11–3.13 and verify the package wheel can be built, installed and used from a separate package path.
+- Unit/CLI tests: 39 passed. Three existing project entry points and two read-only build-plan paths exercised without changing their checkout status. No live service deployment performed.
+
 ## 0.4.0 — Stage 4: portable and OCI artifacts
 
 - Add deterministic directory bundle export/import, validation of archive paths and links, and manifest-verified atomic import without overwrite.

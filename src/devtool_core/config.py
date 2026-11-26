@@ -6,9 +6,14 @@ from pathlib import Path
 from typing import Any
 
 from .graph import TaskGraph
+from .providers import extend_config
 from .model import DevtoolError, NAME, SENSITIVE, Parameter, Project, Task, Target, identifier, strings, text
 
 CONFIG = "devtool.toml"
+
+
+class ConfigNotFound(DevtoolError):
+    pass
 
 
 def fields(value: Any, allowed: set[str], label: str) -> dict:
@@ -31,27 +36,39 @@ def find_config(project: str | Path | None = None, cwd: Path | None = None) -> P
         location = Path(project).expanduser().resolve()
         candidate = location / CONFIG if location.is_dir() else location
         if not candidate.is_file():
-            raise DevtoolError(f"no configuration at {candidate}")
+            raise ConfigNotFound(f"no configuration at {candidate}")
         return candidate
     start = (cwd or Path.cwd()).resolve()
     for directory in (start, *start.parents):
         candidate = directory / CONFIG
         if candidate.is_file():
             return candidate
-    raise DevtoolError(f"no {CONFIG} found; run devtool init or specify --project")
+    raise ConfigNotFound(f"no {CONFIG} found; run devtool init or specify --project")
 
 
-def read_project(config: Path) -> Project:
+def read_identity(config: Path) -> Project:
+    """Read only the project identity; history and direct commands need no providers."""
     config = config.resolve()
     with config.open("rb") as stream:
         data = tomllib.load(stream)
-    fields(data, {"schema", "project", "defaults", "parameters", "aliases", "tasks", "targets"}, "configuration")
+    if type(data.get("schema")) is not int or data["schema"] != 1:
+        raise DevtoolError("configuration requires schema = 1")
+    info = fields(data.get("project",{}), {"name"}, "project")
+    return Project(identifier(info.get("name"),"project name"),config.parent,{},{},{})
+
+
+def read_project(config: Path, *, allow_providers=False) -> Project:
+    config = config.resolve()
+    with config.open("rb") as stream:
+        data = tomllib.load(stream)
+    fields(data, {"schema", "project", "defaults", "parameters", "aliases", "tasks", "targets", "providers"}, "configuration")
     if type(data.get("schema")) is not int or data["schema"] != 1:
         raise DevtoolError("configuration requires schema = 1")
     info = fields(data.get("project", {}), {"name"}, "project")
     name = identifier(info.get("name"), "project name")
     defaults = fields(data.get("defaults", {}), {"module"}, "defaults")
     module = identifier(defaults.get("module", "all"), "default module")
+    data = extend_config(data, config, allow_providers)
     parameters = {}
     for key, value in mapping(data.get("parameters", {}), "parameters").items():
         if not NAME.fullmatch(key) or SENSITIVE.search(key):
