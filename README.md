@@ -116,6 +116,7 @@ Run an explicitly supplied local command, even without a project config, with `d
 
 - [Executable distribution and builds](docs/binary.md)
 - [Configuration reference](docs/configuration.md)
+- [Conditional workflows, custom flags and recovery](docs/workflows.md)
 - [Source groups, artifact manifests and strip](docs/sources-artifacts.md)
 - [Advanced execution and delivery capabilities](docs/advanced.md)
 - [Integration guide](docs/integration.md)

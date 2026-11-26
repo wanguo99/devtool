@@ -20,22 +20,29 @@ ACTIONS = ("clone", "update", "doctor", "build", "test", "deploy", "start", "run
            "status", "logs", "rollback", "export", "import")
 
 
-def task_arguments(parser):
+def task_arguments(parser, options=()):
     parser.add_argument("--set", dest="overrides", action="append", default=[], metavar="NAME=VALUE",
                         help="override a declared non-secret project parameter")
     parser.add_argument("--dry-run", action="store_true", help="print the plan without executing")
     parser.add_argument("--check", action="store_true", help="read-only local input/command preflight")
     parser.add_argument("--json", action="store_true", help="print operation JSON; stream command output to stderr")
+    for flag,option in dict(options).items():
+        dest="project_option_"+flag.replace("-","_")
+        if option.value is None:
+            parser.add_argument("--"+flag,dest=dest,action="append",help=f"set project parameter {option.parameter}")
+        else:
+            value=str(option.value).lower() if isinstance(option.value,bool) else str(option.value)
+            parser.add_argument("--"+flag,dest=dest,action="append_const",const=value,help=f"set {option.parameter}={value}")
 
 
-def action_parsers(subparsers, extra_actions=()):
+def action_parsers(subparsers, extra_actions=(), options=()):
     for action in (*ACTIONS, *extra_actions):
         item = subparsers.add_parser(action, help=f"run the project's {action} task")
         item.add_argument("module", nargs="?", help="project module (default from configuration)")
-        task_arguments(item)
+        task_arguments(item,options)
     task = subparsers.add_parser("task", help="execute a named project task")
     task.add_argument("name")
-    task_arguments(task)
+    task_arguments(task,options)
     direct = subparsers.add_parser("exec", help="run an explicit local command using the recorded executor")
     direct.add_argument("--timeout", type=int)
     direct.add_argument("--dry-run", action="store_true")
@@ -68,7 +75,7 @@ def selected_action(argv):
     return argv[index] if index < len(argv) else ""
 
 
-def parser(extra_actions=()):
+def parser(extra_actions=(), options=()):
     root = argparse.ArgumentParser(prog="devtool", description="Project-defined engineering command runner",
                                    epilog="Any configured command can be invoked by name; use devtool list. Arguments after -- are passed to a single-command task.",
                                    allow_abbrev=False)
@@ -76,9 +83,9 @@ def parser(extra_actions=()):
     root.add_argument("--project", metavar="PATH", help="project directory or TOML file (default: search upward)")
     root.add_argument("--allow-providers", action="store_true", help="enable reviewed project-local Python providers")
     sub = root.add_subparsers(dest="command", required=True)
-    action_parsers(sub, extra_actions)
+    action_parsers(sub, extra_actions,options)
     plan = sub.add_parser("plan", help="print a read-only execution plan")
-    action_parsers(plan.add_subparsers(dest="planned", required=True), extra_actions)
+    action_parsers(plan.add_subparsers(dest="planned", required=True), extra_actions,options)
     listing = sub.add_parser("list", help="list available tasks and aliases")
     listing.add_argument("--json", action="store_true")
     sub.add_parser("validate", help="validate configuration without executing tasks")
@@ -174,15 +181,25 @@ def main(argv=None):
         split = argv.index("--")
         forwarded = tuple(argv[split+1:])
         argv = argv[:split]
-    args = parser(extra).parse_args(argv)
     try:
+        preloaded=None
+        # Project-specific flags are an optional configuration extension. Load
+        # the project once before parsing them; never load providers for help.
+        if (ID.fullmatch(action) and action not in {"init","list","validate","history","show","exec","artifact","plan"}
+                and "--help" not in argv and "-h" not in argv):
+            prefix_parser=argparse.ArgumentParser(add_help=False)
+            prefix_parser.add_argument("--project")
+            prefix_parser.add_argument("--allow-providers",action="store_true")
+            prefix=prefix_parser.parse_args(argv[:command_index(argv)])
+            preloaded=project_context(prefix)
+        args=parser(extra,preloaded.options if preloaded else {}).parse_args(argv)
         if forwarded and action in {"init", "list", "validate", "history", "show"}:
             raise DevtoolError("arguments after -- are only for project tasks or exec")
         if args.command == "init":
             init_project(args.project, args.name)
             return 0
         action = args.planned if args.command == "plan" else args.command
-        project = project_context(args, allow_adhoc=action in ("exec","history","show"))
+        project = preloaded or project_context(args, allow_adhoc=action in ("exec","history","show"))
         if args.command in ("history", "show"):
             store = StateStore(state_directory(project.name, project.root))
             data = store.history(args.limit) if args.command == "history" else store.read(args.operation)
@@ -192,7 +209,8 @@ def main(argv=None):
             if args.command == "validate" or args.json:
                 print(json.dumps({"schema":1,"project":project.name,"root":str(project.root),
                                   "tasks":[{"name":name,"description":task.description,"dependencies":list(task.dependencies)} for name,task in sorted(project.tasks.items())],
-                                  "aliases":project.aliases},ensure_ascii=False,indent=2))
+                                  "aliases":project.aliases,
+                                  "options":{name:{"parameter":option.parameter,"value":option.value} for name,option in project.options.items()}},ensure_ascii=False,indent=2))
                 return 0
             for key, task in sorted(project.tasks.items()):
                 print(f"{key}\t{task.description}")
@@ -203,7 +221,11 @@ def main(argv=None):
             plan = direct_plan(project,args)
         else:
             requested = args.name if action == "task" else action_task(project, action, args.module)
-            plan = make_plan(project, requested, overrides(args.overrides), forwarded=forwarded)
+            supplied=list(args.overrides)
+            for flag,option in project.options.items():
+                for value in getattr(args,"project_option_"+flag.replace("-","_"),None) or []:
+                    supplied.append(f"{option.parameter}={value}")
+            plan = make_plan(project, requested, overrides(supplied), forwarded=forwarded)
         if args.command == "plan" or args.dry_run or args.check:
             data = plan.public()
             status = 0

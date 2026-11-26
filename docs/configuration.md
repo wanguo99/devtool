@@ -104,3 +104,7 @@ Aliases map to existing task names. `update` is not assigned a built-in behavior
 ## Optional source and artifact declarations
 
 A `[sources]` catalog generates grouped clone/update tasks. Full tasks may declare `tools`, `requires`, `images`, `manifest` and `verify_manifests` for local input and immutable build-output checks. See [source groups and artifact contracts](sources-artifacts.md).
+
+## Advanced workflows
+
+Projects can define native CLI option names via `[options]`, computed defaults via `derive`, conditional tasks/steps via `when`, independent step tables and explicit failure/cleanup commands. See [workflow reference](workflows.md).

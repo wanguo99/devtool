@@ -26,6 +26,10 @@ class Timeout(DevtoolError):
     pass
 
 
+class UnknownOutcome(DevtoolError):
+    pass
+
+
 class BoundedOutput:
     def __init__(self, stream, redactor: Redactor, limit=LOG_LIMIT, console=None):
         self.stream = stream
@@ -114,7 +118,7 @@ def command_path(step: Step, env):
 def inspect_plan(plan: Plan):
     """Read-only local preflight; missing generated paths are reported, not created."""
     result = []
-    for step in plan.steps:
+    for step in plan.all_steps():
         env = {**os.environ, **step.env}
         missing = [name for name in step.secret_env.values() if not os.environ.get(name)]
         result.append({"task": step.task, "index": step.index,
@@ -171,7 +175,7 @@ def execute(plan: Plan, *, state_root: Path | None = None, log_limit=LOG_LIMIT, 
     store = StateStore(state_root or state_directory(plan.project, plan.root))
     redactor = secret_values(plan)
     # Resolve every explicit reference before any command can mutate the project.
-    for step in plan.steps:
+    for step in plan.all_steps():
         resolve_environment(step)
     with store.acquire(plan.resources):
         directory, record = store.create(redactor.data(plan.public()))
@@ -181,6 +185,21 @@ def execute(plan: Plan, *, state_root: Path | None = None, log_limit=LOG_LIMIT, 
         steps_by_task = {}
         for step in plan.steps:
             steps_by_task.setdefault(step.task, []).append(step)
+        def logged(step,phase="command"):
+            nonlocal current
+            label=f"{len(record['steps'])+1:03d}-{step.task}-{phase}-{step.index}.log"
+            current={"task":step.task,"index":step.index,"phase":phase,"status":"RUNNING","started_at":now(),"log":label}
+            record["steps"].append(current);store.save(record)
+            print(redactor.text(f"[{step.task}:{phase}:{step.index}] {shlex.join(step.argv)}"),file=sys.stderr,flush=True)
+            fd=os.open(directory/label,os.O_CREAT|os.O_EXCL|os.O_WRONLY,0o600)
+            with os.fdopen(fd,"w",encoding="utf-8") as stream:
+                result,truncated=run_step(step,stream,redactor,log_limit,sys.stderr if json_output else None)
+            current.update(status="SUCCEEDED" if result==0 else "FAILED",exit_code=result,finished_at=now(),log_truncated=truncated)
+            store.save(record);current=None
+            if step.target_kind=="ssh" and result==255:
+                raise UnknownOutcome("SSH connection failed or was lost; inspect the target before retrying")
+            return result
+
         try:
             for name in plan.tasks:
                 missing = [tool for tool in plan.required_tools.get(name,()) if not shutil.which(tool)]
@@ -195,23 +214,23 @@ def execute(plan: Plan, *, state_root: Path | None = None, log_limit=LOG_LIMIT, 
                         verify_manifest(plan.root,path.relative_to(plan.root))
                 if name in plan.manifest_outputs and plan.manifest_outputs[name].exists():
                     raise DevtoolError(f"immutable candidate manifest already exists: {plan.manifest_outputs[name]}")
+                failure=0
                 for step in steps_by_task.get(name, ()):
-                    label = f"{len(record['steps'])+1:03d}-{step.task}-{step.index}.log"
-                    current = {"task": step.task, "index": step.index, "status": "RUNNING",
-                               "started_at": now(), "log": label}
-                    record["steps"].append(current)
-                    store.save(record)
-                    print(redactor.text(f"[{step.task}:{step.index}] {shlex.join(step.argv)}"), file=sys.stderr, flush=True)
-                    # O_EXCL avoids replacing a path unexpectedly inserted into the run directory.
-                    fd = os.open(directory / label, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-                    with os.fdopen(fd, "w", encoding="utf-8") as stream:
-                        code, truncated = run_step(step, stream, redactor, log_limit, sys.stderr if json_output else None)
-                    current.update(status="SUCCEEDED" if code == 0 else "FAILED", exit_code=code,
-                                   finished_at=now(), log_truncated=truncated)
-                    store.save(record)
-                    if code:
-                        raise DevtoolError(f"{step.task}:{step.index} exited with {code}")
-                    current = None
+                    failure=logged(step)
+                    if failure:
+                        code=failure
+                        record["failed_step"]={"task":name,"index":step.index,"exit_code":failure}
+                        for recovery in plan.recovery_steps.get(name,()):
+                            if logged(recovery,"on_failure"): break
+                        break
+                # Configured recovery/cleanup applies to known synchronous outcomes,
+                # not cancellation or a timed-out/unknown remote operation.
+                cleanup_failure=0
+                for cleanup in plan.cleanup_steps.get(name,()):
+                    result=logged(cleanup,"cleanup")
+                    cleanup_failure=cleanup_failure or result
+                code=failure or cleanup_failure
+                if code: raise DevtoolError(f"task {name} exited with {code}")
                 for path in plan.artifacts.get(name, ()):
                     record["artifacts"].append(redactor.data({"task": name, **describe(path, plan.root)}))
                 if name in plan.images:
@@ -230,6 +249,9 @@ def execute(plan: Plan, *, state_root: Path | None = None, log_limit=LOG_LIMIT, 
         except KeyboardInterrupt:
             code = 130
             record.update(status="CANCELLED", error="interrupted")
+        except UnknownOutcome as exc:
+            code = 255
+            record.update(status="INTERRUPTED_UNKNOWN",error=redactor.text(str(exc)))
         except Timeout as exc:
             code = 124
             record.update(status="TIMED_OUT", error=redactor.text(str(exc)))

@@ -43,6 +43,7 @@ class Parameter:
     default: str | int | bool | None = None
     choices: tuple[str | int | bool, ...] = ()
     description: str = ""
+    derive: str = ""
 
     def parse(self, value: Any, name: str):
         if self.kind == "string":
@@ -60,6 +61,23 @@ class Parameter:
         if result is None or self.choices and result not in self.choices:
             raise DevtoolError(f"invalid value for parameter {name!r} (type={self.kind}, choices={self.choices})")
         return result
+
+
+@dataclass(frozen=True)
+class CommandStep:
+    argv: tuple[str, ...]
+    cwd: str | None = None
+    env: dict[str, str] = field(default_factory=dict)
+    secret_env: dict[str, str] = field(default_factory=dict)
+    timeout: int | None = None
+    target: str | None = None
+    when: dict[str, tuple[str | int | bool, ...]] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class Option:
+    parameter: str
+    value: str | int | bool | None = None
 
 
 @dataclass(frozen=True)
@@ -81,6 +99,10 @@ class Task:
     manifest: str = ""
     images: tuple[str, ...] = ()
     tools: tuple[str, ...] = ()
+    steps: tuple[CommandStep, ...] = ()
+    when: dict[str, tuple[str | int | bool, ...]] = field(default_factory=dict)
+    on_failure: tuple[tuple[str, ...], ...] = ()
+    cleanup: tuple[tuple[str, ...], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -104,6 +126,7 @@ class Project:
     aliases: dict[str, str]
     default_module: str = "all"
     targets: dict[str, Target] = field(default_factory=dict)
+    options: dict[str, Option] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -140,6 +163,12 @@ class Plan:
     manifest_outputs: dict[str, Path] = field(default_factory=dict)
     images: dict[str, tuple[str, ...]] = field(default_factory=dict)
     required_tools: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    recovery_steps: dict[str, tuple[Step, ...]] = field(default_factory=dict)
+    cleanup_steps: dict[str, tuple[Step, ...]] = field(default_factory=dict)
+
+    def all_steps(self):
+        return (*self.steps, *(step for steps in self.recovery_steps.values() for step in steps),
+                *(step for steps in self.cleanup_steps.values() for step in steps))
 
     def public(self):
         value = {"schema": 1, "project": self.project, "root": str(self.root),
@@ -151,6 +180,8 @@ class Plan:
                 "verify_manifests": {task: [str(p) for p in paths] for task, paths in self.verify_manifests.items()},
                 "manifest_outputs": {task: str(path) for task, path in self.manifest_outputs.items()},
                 "images": {task: list(images) for task, images in self.images.items()},
-                "required_tools": {task: list(tools) for task,tools in self.required_tools.items()}}
+                "required_tools": {task: list(tools) for task,tools in self.required_tools.items()},
+                "on_failure": {task: [step.public() for step in steps] for task,steps in self.recovery_steps.items()},
+                "cleanup": {task: [step.public() for step in steps] for task,steps in self.cleanup_steps.items()}}
         value["digest"] = hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
         return value

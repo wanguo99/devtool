@@ -27,7 +27,7 @@ class Redactor:
 def secret_values(plan, environ=None):
     environ = os.environ if environ is None else environ
     known = [value for key, value in environ.items() if SENSITIVE.search(key) and len(value) >= 4]
-    for step in plan.steps:
+    for step in plan.all_steps():
         for name in step.secret_env.values():
             if name in environ and environ[name]:
                 known.append(environ[name])

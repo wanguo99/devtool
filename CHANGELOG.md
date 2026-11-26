@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.0 — Configuration-defined workflow branching and recovery
+
+- Add project-specific CLI option mappings (including mutually exclusive constant flags), derived parameter defaults, conditional task dependencies, independently configured command steps and explicit failure/cleanup actions.
+- Preserve failed command exit status and log recovery/cleanup separately; ambiguous SSH loss is recorded as interrupted/unknown without automatic recovery.
+- 67 unit/CLI tests pass, including platform/profile options, per-step working directories, disabled branch skipping and recovery behavior.
+
 ## 0.8.0 — Reusable source and artifact preparation
 
 - Add declarative Git source groups, optional legacy exclusions, pinned new checkouts and fetch-only updates. Missing submodules are initialized without resetting existing checkouts. Local Git fixtures verify dirty worktree and submodule preservation.

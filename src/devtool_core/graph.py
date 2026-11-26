@@ -7,7 +7,7 @@ class TaskGraph:
         self.tasks = tasks
         self.order(tuple(tasks))  # Validate disconnected components too.
 
-    def order(self, requested: tuple[str, ...]) -> tuple[Task, ...]:
+    def order(self, requested: tuple[str, ...], enabled=None) -> tuple[Task, ...]:
         done: set[str] = set()
         active: list[str] = []
         result: list[Task] = []
@@ -19,6 +19,9 @@ class TaskGraph:
                 raise DevtoolError("task dependency cycle: " + " -> ".join((*active, name)))
             if name not in self.tasks:
                 raise DevtoolError(f"unknown task {name!r}")
+            if enabled is not None and not enabled(self.tasks[name]):
+                done.add(name)
+                return
             active.append(name)
             for dependency in self.tasks[name].dependencies:
                 visit(dependency)
