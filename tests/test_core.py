@@ -82,6 +82,24 @@ commands=[["echo","{{mode}}","--jobs={{jobs}}","{{flag}}"]]
         payload = 'a b; $(not executed)'
         self.assertEqual(make_plan(project,'x',{'value':payload}).steps[0].argv[-1], payload)
 
+    def test_literal_braces_and_parameters(self):
+        project = self.load('''
+[parameters.name]
+default="example"
+[parameters.format]
+default="{{.Image}}"
+[commands]
+status=["docker","inspect","--format","{{{{.State.Status}}}} {{format}}", "{{name}}", "{{{{name}}}}"]
+''')
+        plan = make_plan(project, "status")
+        self.assertEqual(plan.steps[0].argv, (
+            "docker", "inspect", "--format", "{{.State.Status}} {{.Image}}",
+            "example", "{{name}}"))
+        for invalid in ("{{missing}}", "{{.Image}}", "{{broken", "broken}}"):
+            with self.subTest(invalid=invalid), self.assertRaises(DevtoolError):
+                project = self.load(f'[commands]\nstatus=["echo","{invalid}"]')
+                make_plan(project, "status")
+
     def test_cwd_cannot_escape(self):
         project = self.load('[tasks.x]\ncommands=[["echo","x"]]\ncwd=".."')
         with self.assertRaises(DevtoolError):

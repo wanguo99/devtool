@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import os
 import platform
+import re
 from pathlib import Path
 from .graph import TaskGraph
 from .model import DevtoolError, PLACEHOLDER, Project, Plan, Step, CommandStep, identifier
@@ -55,12 +56,18 @@ def make_plan(project: Project, requested: str, overrides: dict[str,str] | None=
         return values[key]
 
     def render(text):
+        # Parse the original string once: escaped braces and parameter values
+        # are literal output, not another round of template input.
+        tokens = re.compile(r"\{\{\{\{|\}\}\}\}|" + PLACEHOLDER.pattern + r"|\{\{|\}\}")
         def substitute(match):
+            token = match.group(0)
+            if token in ("{{{{", "}}}}"):
+                return token[:2]
+            if match.group(1) is None:
+                raise DevtoolError(f"invalid unresolved parameter in {text!r}")
             item=value(match.group(1))
             return str(item).lower() if isinstance(item,bool) else str(item)
-        result=PLACEHOLDER.sub(substitute,text)
-        if "{{" in result or "}}" in result: raise DevtoolError(f"invalid unresolved parameter in {text!r}")
-        return result
+        return tokens.sub(substitute,text)
 
     def condition(when):
         return all(value(key) in choices for key,choices in when.items())

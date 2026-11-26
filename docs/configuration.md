@@ -91,6 +91,8 @@ build = ["make", "MODE={{mode}}", "-j{{jobs}}"]
 
 Use `devtool build --set mode=debug --set jobs=8`. Supported types are `string`, `integer`, `boolean` (default type is string). A referenced parameter without a default is required. Each placeholder is substituted within an individual argument without a second round of parsing. Unknown and unused overrides fail, so misspelled flags do not silently change behavior. Parameters may also be used in declared task paths, non-secret environment fields and optional target/transfer settings.
 
+Write `{{{{` and `}}}}` to produce literal double braces in configured strings. For example, Docker's Go template can be passed as `["docker", "inspect", "--format", "{{{{.State.Status}}}}", "{{container}}"]`. After planning, Docker receives `{{.State.Status}}` and the resolved container name as separate arguments. Values supplied by parameters or forwarded after `--` remain literal data; they are not parsed as Devtool placeholders.
+
 ## Aliases and checks
 
 ```toml

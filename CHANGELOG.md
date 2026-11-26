@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.10.1 — Literal templates in configured commands
+
+- Support escaped double braces in configured arguments, including Docker's Go templates for container status and diagnostics. Preserve literal data within parameter values without a second pass through the template parser. Keep unknown and malformed placeholders strict.
+- Add regression coverage for literal braces, mixed parameters and malformed templates, following the real ARM64 deployment validation.
+
 ## 0.10.0 — Offline image sets and existing-project configurations
 
 - Add complete multi-image Docker save/load bundles with archive, tag and candidate identity checks; the real Docker 29.7.2 scratch-image integration passes both incremental OCI and full two-image bundle reload. Add checksum-pinned file caching and repair.
