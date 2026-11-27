@@ -9,8 +9,9 @@ import subprocess
 import tempfile
 import uuid
 
-from devtool_core import oci, transport
-from devtool_core.image_bundle import export_images, import_images
+from devtool_core.delivery import oci, oci_layout, rsync
+from devtool_core.runtime.docker import docker_identity
+from devtool_core.delivery.bundles import export_images, import_images
 
 
 def run(argv, **kwargs):
@@ -37,13 +38,13 @@ def main():
                 (context / "app.txt").write_text(f"fixture application version {index}\n")
                 run(["docker", "build", "--network=none", "--provenance=false", "--tag", tag, str(context)])
                 created.append(tag)
-                identity = transport.docker_identity(tag)
+                identity = docker_identity(tag)
                 source = root / f"source-{index}.tar"
                 run(["docker", "image", "save", "--output", str(source), tag])
                 stage = root / f"stage-{index}"
-                manifest = oci.stage_archive(source, stage, tag, identity)
+                manifest = oci_layout.stage_archive(source, stage, tag, identity)
                 manifests.append(manifest)
-                result = run([*transport.rsync_options(), "--itemize-changes", "--", str(stage)+"/", str(cache)+"/"], capture_output=True, text=True)
+                result = run([*rsync.rsync_options(), "--itemize-changes", "--", str(stage)+"/", str(cache)+"/"], capture_output=True, text=True)
                 reports.append(result.stdout)
             shared = {item["path"] for item in manifests[0]["entries"] if item["path"].startswith("blobs/")} & {item["path"] for item in manifests[1]["entries"] if item["path"].startswith("blobs/")}
             transferred = [line for line in reports[1].splitlines() if line.startswith(">f")]
@@ -53,10 +54,10 @@ def main():
             second = manifests[1]
             # Only remove the unique, labelled test tag so the next load is real.
             run(["docker", "image", "rm", tags[1]])
-            if transport.docker_identity(tags[1], missing_ok=True) is not None:
+            if docker_identity(tags[1], missing_ok=True) is not None:
                 raise RuntimeError("fixture tag was not removed")
-            oci.load_candidate(cache, oci.identity_digest(second))
-            if transport.docker_identity(tags[1]) != second["identity"]:
+            oci.load_candidate(cache, oci_layout.identity_digest(second))
+            if docker_identity(tags[1]) != second["identity"]:
                 raise RuntimeError("reloaded test image has a different identity")
             bundle=root/"full-images.tar.gz"
             full=export_images(bundle,tags)

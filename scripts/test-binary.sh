@@ -32,6 +32,11 @@ docker run --rm --network none --user "$(id -u):$(id -g)" -e HOME=/tmp -e DEVTOO
     ./devtool status
     ./devtool inspect --debug
     ./devtool plan clone >/tmp/source-plan.json
+    ./devtool _internal sources --help >/tmp/source-help.txt
+    ./devtool _internal transport --help >/tmp/transport-help.txt
+    ./devtool _internal manifest --help >/tmp/artifact-help.txt
+    ./devtool _internal transport prepare-tree --root /project --destination stage
+    test -d stage
     ./devtool plan export >/tmp/plan.json
     ./devtool backup -- --fixture-argument
     ./devtool export

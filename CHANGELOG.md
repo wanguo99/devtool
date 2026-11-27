@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.11.0 — Modular engine and adapter boundaries
+
+- Reorganize the flat implementation into CLI, configuration, planning, execution, runtime, artifact, delivery and source packages with narrow responsibilities. Separate parameter resolution, task parsing, subprocess/log handling, OCI archive processing, and transport dispatch.
+- Remove the artifact/archive/transport dependency cycle by sharing tree identities and Docker/SSH primitives at their owning boundaries. Preserve lazy optional adapters, schema-1 configuration, plans, operation records, source helper module names and the executable's internal helper protocol.
+- Separate fast tests from opt-in integration tests; add package dependency, lazy-loading and legacy source-helper regression coverage. Expand the Python-free packaged executable check to exercise helper dispatch.
+- All 76 fast tests passed; all 169 captured example task plans were byte-for-byte unchanged. Real Docker 29.7.2 OCI and full-bundle reload checks, installed wheel execution and the native x86_64 executable smoke test passed.
+
 ## 0.10.1 — Literal templates in configured commands
 
 - Support escaped double braces in configured arguments, including Docker's Go templates for container status and diagnostics. Preserve literal data within parameter values without a second pass through the template parser. Keep unknown and malformed placeholders strict.

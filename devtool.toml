@@ -7,8 +7,8 @@ name = "devtool"
 module = "all"
 
 [tasks."test.all"]
-description = "Run the devtool unit and CLI tests"
-commands = [["python3", "-m", "unittest", "discover", "-s", "tests", "-v"]]
+description = "Run the fast unit, architecture and local CLI regression tests"
+commands = [["python3", "-m", "unittest", "discover", "-s", "tests/unit", "-v"]]
 env = { PYTHONPATH = "src", PYTHONDONTWRITEBYTECODE = "1" }
 
 [commands]
