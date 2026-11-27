@@ -140,3 +140,41 @@ env={MODE="override"}
             project=read_project(base/name/'devtool.toml')
             for task in tasks: self.assertIn(task,project.tasks)
             for task in project.tasks:make_plan(project,task)
+
+    def test_reusable_template_and_optional_blocks(self):
+        import re
+        import tomllib
+
+        template = Path(__file__).resolve().parents[2] / 'templates/devtool.toml'
+        content = template.read_text()
+        self.assertEqual(tomllib.loads(content), {})
+        self.config.write_text(content)
+        with self.assertRaisesRegex(DevtoolError, 'project defines no tasks'):
+            read_project(self.config)
+
+        # A user can activate just one action, leaving every option at default.
+        selected = content.replace('# [commands]\n', '[commands]\n').replace(
+            '# doctor = ["uname", "-m"]', 'doctor = ["uname", "-m"]')
+        self.config.write_text(selected)
+        project = read_project(self.config)
+        self.assertEqual(set(project.tasks), {'doctor'})
+        self.assertEqual(project.default_module, 'all')
+        self.assertEqual(project.name, 'demo-project')
+        self.assertEqual(make_plan(project, 'doctor').steps[0].argv, ('uname', '-m'))
+
+        # Enable all commented TOML declarations, without enabling prose.
+        declaration = re.compile(r'^# (?=\[|[A-Za-z_][A-Za-z0-9_-]*\s*=|"[^"]+"\s*=)')
+        enabled = '\n'.join(declaration.sub('', line) for line in content.splitlines())
+        self.config.write_text(enabled + '\n')
+        project = read_project(self.config)
+        for task in ('doctor', 'clone', 'update', 'build', 'test', 'deploy',
+                     'start', 'stop', 'status', 'logs',
+                     'clone.all', 'update.all', 'build.all', 'stage.files',
+                     'deploy.remote', 'stage.oci', 'stage.registry',
+                     'status.container', 'export.bundle', 'import.bundle', 'candidate'):
+            self.assertIn(task, project.tasks)
+        for task in project.tasks:
+            make_plan(project, task)
+        plan = make_plan(project, 'build.all', {'profile': 'debug', 'jobs': '8'})
+        self.assertEqual(plan.steps[0].argv,
+                         ('./scripts/build.sh', '--profile', 'debug', '--jobs', '8'))

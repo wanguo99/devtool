@@ -1,0 +1,148 @@
+# DEVTOOL CONFIGURATION — copy to the project root as devtool.toml.
+# Like sshd_config, all declarations are initially commented out.
+#
+# DEFAULTS: omitting an optional setting uses the engine's actual default.
+# EXAMPLES: project commands, names and remote locations have no universal
+# values; replace the illustrative values with your project's own settings.
+#
+# Enable exactly the sections you need. Start by uncommenting [commands] and
+# at least one command below (e.g. doctor). A completely commented file has no
+# tasks and is intentionally not an operational project configuration.
+# Run ./devtool validate and ./devtool plan <action> before executing.
+
+# schema = 1                     # default: 1
+# providers = []                 # default: no custom Python providers
+
+# [project]
+# name = "my-project"            # default: derived from project directory
+
+# [defaults]
+# module = "all"                 # default: all
+# env = {}                       # default: empty; non-secret environment
+
+# COMMANDS — no default project actions. Uncomment the table header once and
+# only the individual actions you need; edit the illustrative script paths.
+# Commands are argv arrays (or shell-like strings), not implicit shell code.
+# [commands]
+# doctor = ["uname", "-m"]
+# clone = ["./scripts/sources.sh", "clone"]
+# update = ["./scripts/sources.sh", "update"]
+# build = ["./scripts/build.sh"]
+# test = ["./scripts/test.sh"]
+# deploy = ["./scripts/deploy.sh"]
+# start = ["./scripts/service.sh", "start"]
+# stop = ["./scripts/service.sh", "stop"]
+# status = ["./scripts/service.sh", "status"]
+# logs = ["./scripts/service.sh", "logs"]
+# Add project-defined commands or modules here, for example:
+# "build.web" = ["pnpm", "build"]
+# "test.web" = ["pnpm", "check"]
+# backup = ["./scripts/backup.sh"]
+
+# SOURCES — optional. Generates clone.all/update.all and named source tasks.
+# Use this instead of the clone/update scripts above when appropriate.
+# [sources.component]
+# url = "https://example.invalid/team/component.git"  # required example
+# path = "source/component"      # default: source/<source-name>
+# branch = ""                    # default: remote default branch; e.g. "main"
+# groups = ["dependencies"]      # default: []
+# default = true                 # default: true
+# submodules = false             # default: false
+# To pin a revision instead of a branch, use a full commit SHA in revision.
+
+# PARAMETERS AND TASKS — optional. Typed build parameters, flags and artifacts.
+# Enable all of this block together. build.all then takes precedence over the
+# shorthand build command above. Edit the command and output paths to fit.
+# [parameters.profile]
+# type = "string"                # default: string
+# default = "release"            # project-defined default
+# choices = ["release", "debug"] # default: [] (unrestricted)
+# [parameters.jobs]
+# type = "integer"
+# derive = "half_cpus"           # project-selected default: half available CPUs
+# [options]
+# jobs = "jobs"
+# debug = { parameter = "profile", value = "debug" }
+# release = { parameter = "profile", value = "release" }
+# [tasks."build.app"]
+# description = "Build an application candidate"  # default: empty
+# dependencies = []              # default: no prerequisites
+# commands = [["./scripts/build.sh", "--profile", "{{profile}}", "--jobs", "{{jobs}}"]]
+# cwd = "."                      # default: project root
+# target = "local"               # default: local
+# env = {}                       # default: empty (inherits defaults.env)
+# secret_env = {}                # default: empty; values refer to env names
+# timeout = 3600                 # default if omitted: no timeout
+# resources = ["project"]        # default: project lock
+# requires = []                  # default: no required input paths
+# tools = []                     # default: no required external tools
+# artifacts = ["dist/app"]       # default: []
+# images = []                    # default: []
+# manifest = "dist/manifests/app.json" # default: disabled
+# verify_manifests = []          # default: []
+# transfers = []                 # default: no transfers
+# when = {}                      # default: always enabled
+# on_failure = []                # default: no recovery commands
+# cleanup = []                   # default: no cleanup commands
+# [tasks."build.all"]
+# dependencies = ["build.app"]
+
+# SSH TARGET — optional, with verified incremental file staging.
+# Replace the placeholder host, absolute workdir and commands.
+# The target needs its own compatible Devtool executable and project scripts.
+# [targets.lab]
+# kind = "ssh"
+# host = "dev@example.invalid"   # required example
+# workdir = "/srv/my-project"     # required absolute path example
+# port = 22                      # default: 22
+# engine = "./devtool"            # default for packaged executable: ./devtool
+# Optional identity: omit to use existing SSH authentication.
+# [tasks."stage.files"]
+# transfers = [{ kind = "rsync", target = "lab", source = "dist/app", destination = "staging/app" }]
+# [tasks."deploy.remote"]
+# dependencies = ["stage.files"]
+# target = "lab"
+# commands = [["./scripts/deploy.sh", "staging/app"]]
+# [tasks."status.remote"]
+# target = "lab"
+# commands = [["docker", "compose", "ps"]]
+# resources = []
+# [tasks."logs.remote"]
+# target = "lab"
+# commands = [["docker", "compose", "logs", "--tail", "100"]]
+# resources = []
+
+# EXISTING CONTAINER — optional target. Does not create or pull a container.
+# [targets.builder]
+# kind = "docker"
+# container = "my-project-builder" # required example
+# workdir = "/workspace"          # required absolute path example
+# [tasks."status.container"]
+# target = "builder"
+# commands = [["uname", "-m"]]
+# resources = []
+
+# IMAGE DELIVERY — optional (enable with the lab target above).
+# Staging prepares images without starting containers.
+# [tasks."stage.oci"]
+# transfers = [{ kind = "oci-delta", target = "lab", image = "registry.example.invalid/app:1.0", destination = "staging/oci" }]
+# [tasks."stage.registry"]
+# transfers = [{ kind = "registry", target = "lab", image = "registry.example.invalid/app:1.0" }]
+
+# OFFLINE BUNDLES — optional, without a remote target.
+# [tasks."export.bundle"]
+# transfers = [{ kind = "archive-pack", source = "dist/app", destination = "bundles/app.tar.gz" }]
+# [tasks."import.bundle"]
+# transfers = [{ kind = "archive-unpack", source = "bundles/app.tar.gz", destination = "restored/app" }]
+
+# WORKFLOW AND ALIAS — optional. Only this workflow joins test and build;
+# an ordinary deploy does not implicitly build, transfer or run tests.
+# [tasks.candidate]
+# dependencies = ["test", "build.all"]  # use "build" if the advanced build block is not enabled
+# [aliases]
+# "run.all" = "start"
+
+# More configuration fields (steps, when, on_failure, cleanup, secret_env,
+# providers, manifests, existing-container targets) are documented in
+# docs/configuration.md, docs/workflows.md and docs/advanced.md in Devtool.
+# Keep credentials in the project's external environment or existing secret store.

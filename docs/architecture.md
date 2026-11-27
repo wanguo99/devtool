@@ -24,6 +24,7 @@ tests/
 examples/
   projects/                     Existing-project compatibility configurations
   simple/, provider/, bridge/   Independent configuration examples
+templates/                      Copyable project configuration template
 packaging/                      Pinned executable build environment and entry point
 scripts/                        Build and distribution smoke-test scripts
 docs/                           Public usage, architecture and acceptance evidence

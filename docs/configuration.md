@@ -2,6 +2,8 @@
 
 Devtool reads `devtool.toml` from the current directory or an ancestor, or from the path supplied to `--project`. Relative task paths use the configuration directory as the project root.
 
+Copy [the reusable configuration template](../templates/devtool.toml) into a new project as `devtool.toml`. All declarations are commented, with actual optional settings' defaults or clearly labelled project-specific examples. Uncomment a table header and the desired entries; for instance, enable `[commands]` and `doctor = ["uname", "-m"]`. At least one task is required for an operational configuration; omitting every declaration does not implicitly select any project action. Enable optional capability blocks only when needed. Run `devtool validate` and `devtool plan` for the intended action before executing it.
+
 ## Minimal commands
 
 ```toml
