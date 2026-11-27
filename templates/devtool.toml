@@ -39,8 +39,15 @@
 # "test.web" = ["pnpm", "check"]
 # backup = ["./scripts/backup.sh"]
 
+# BACKEND — optional alternative for actions already implemented by a project CLI.
+# The engine forwards the action and its arguments directly, without [options].
+# Do not list actions also defined as explicit commands/tasks above.
+# [backend]
+# command = ["./scripts/project.sh"]
+# actions = ["configure"]
+
 # SOURCES — optional. Generates clone.all/update.all and named source tasks.
-# Use this instead of the clone/update scripts above when appropriate.
+# Delegating clone/update in [backend] suppresses the respective native tasks.
 # [sources.component]
 # url = "https://example.invalid/team/component.git"  # required example
 # path = "source/component"      # default: source/<source-name>

@@ -58,6 +58,19 @@ backup = "./scripts/backup.sh"
 
 These are example commands; replace them with the commands your project already uses. No `[project]` table, plugin, backend, or additional file is required. `devtool init` can generate a starter config without overwriting an existing file.
 
+If the project already has a command-line backend that parses its own actions and options, delegate those actions in two declarations instead of repeating every flag and module:
+
+```toml
+[backend]
+command = ["python3", "-m", "my_project"]
+actions = ["clone", "update", "build", "deploy", "test"]
+
+[sources]
+component = { url = "https://example.invalid/component.git", branch = "main" }
+```
+
+`devtool build server --jobs 8` invokes `python3 -m my_project build server --jobs 8`. Devtool still handles planning, local preflight, execution, locks and operation history. The backend owns its business arguments and can read `[sources]` from the same file. Use this only when an existing backend already implements those operations; otherwise ordinary `[commands]` and native `[sources]` are sufficient. See [backend delegation](docs/configuration.md#delegate-an-existing-project-backend).
+
 ## 4. Run the commands
 
 ```sh

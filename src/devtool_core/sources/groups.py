@@ -9,7 +9,7 @@ from ..runtime import helper_command
 from .paths import SHA, source_path
 
 
-def source_tasks(raw, root: Path):
+def source_tasks(raw, root: Path, *, actions=("clone", "update")):
     """Translate source declarations into ordinary engine tasks, not a second runner."""
     if not isinstance(raw, dict):
         raise DevtoolError("sources must be a table")
@@ -24,7 +24,7 @@ def source_tasks(raw, root: Path):
         path = text(item.get("path", "source/" + name), f"sources.{name}.path")
         if "{{" in path:
             raise DevtoolError("source checkout paths must be fixed to prevent overlapping destinations")
-        destination = source_path(root, path)
+        destination = source_path(root, path, check_layout=bool(actions))
         if any(destination == previous or destination.is_relative_to(previous) or previous.is_relative_to(destination) for previous in paths):
             raise DevtoolError("source checkout paths overlap")
         paths.add(destination)
@@ -49,7 +49,7 @@ def source_tasks(raw, root: Path):
                 groups[group].append(name)
         if included:
             groups["all"].append(name)
-        for action in ("clone", "update"):
+        for action in actions:
             command = [*helper_command("sources"), action, "--root", str(root), "--path", path, "--url", url]
             if branch:
                 command += ["--branch", branch]
@@ -62,7 +62,7 @@ def source_tasks(raw, root: Path):
     for group, names in groups.items():
         if not names:
             continue
-        for action in ("clone", "update"):
+        for action in actions:
             key = f"{action}.{group}"
             generated[key] = Task(key, f"{action} source group {group}", dependencies=tuple(f"source.{action}.{name}" for name in names))
     return generated

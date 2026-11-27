@@ -59,6 +59,59 @@ backup = ["%s", "-c", "import sys; print(sys.argv[1:])"]
         code,out,_=self.call('plan','inspect','db','--','--check')
         self.assertEqual(code,0);self.assertEqual(json.loads(out)['steps'][0]['argv'],['echo','DB','--check'])
 
+    def test_backend_delegates_native_arguments_and_engine_controls(self):
+        script = self.root / 'backend.py'
+        script.write_text('import json,sys\nfrom pathlib import Path\nPath("received.json").write_text(json.dumps(sys.argv[1:]))\nprint(sys.argv[1:])\n')
+        project = self.load(f'''[backend]
+command = [{json.dumps(sys.executable)}, "backend.py"]
+actions = ["clone", "build", "deploy", "custom"]
+[commands]
+doctor = "echo ready"
+''')
+        self.assertEqual(set(project.tasks), {'clone', 'build', 'deploy', 'custom', 'doctor'})
+        args = ['ran', '--platform', 'arm64', '--jobs=8', '--path', 'with spaces; literal', '--only', 'a', 'b']
+        expected = [sys.executable, 'backend.py', 'build', *args]
+        for invocation in (('plan', 'build', *args), ('build', *args, '--dry-run'), ('build', *args, '--check')):
+            code, out, err = self.call(*invocation)
+            self.assertEqual(code, 0, err)
+            self.assertEqual(json.loads(out)['steps'][0]['argv'], expected)
+            self.assertFalse((self.root / 'received.json').exists())
+        code, out, err = self.call('build', *args, '--json', '--', '--check', '--json')
+        self.assertEqual(code, 0, err)
+        record = json.loads(out)
+        self.assertEqual(record['plan']['steps'][0]['argv'], [*expected, '--check', '--json'])
+        self.assertEqual(json.loads((self.root / 'received.json').read_text()), ['build', *args, '--check', '--json'])
+        code, _, err = self.call('custom', '--help')
+        self.assertEqual(code, 0, err)
+        self.assertEqual(json.loads((self.root / 'received.json').read_text()), ['custom', '--help'])
+
+    def test_backend_owns_sources_when_clone_and_update_delegated(self):
+        source = self.root / 'source'
+        source.mkdir()
+        actual = source / 'real'
+        actual.mkdir()
+        (source / 'component').symlink_to(actual, target_is_directory=True)
+        project = self.load('''[backend]
+command = "echo backend"
+actions = ["clone", "update"]
+[sources.component]
+url = "https://example.invalid/component.git"
+branch = "main"
+groups = ["core"]
+''')
+        self.assertEqual(set(project.tasks), {'clone', 'update'})
+        code, out, err = self.call('plan', 'clone', 'core', '--list')
+        self.assertEqual(code, 0, err)
+        self.assertEqual(json.loads(out)['steps'][0]['argv'], ['echo', 'backend', 'clone', 'core', '--list'])
+        with self.assertRaisesRegex(DevtoolError, 'symlink'):
+            self.load(self.config.read_text().replace('["clone", "update"]', '["clone"]'))
+
+    def test_backend_conflicts_fail_early(self):
+        for text in ('actions = ["plan"]', 'actions = []', 'actions = ["clone", "clone"]',
+                     'actions = ["build"]\n[commands]\n"build.ran" = "make"'):
+            with self.subTest(text=text), self.assertRaises(DevtoolError):
+                self.load('[backend]\ncommand = "echo backend"\n' + text)
+
     def test_shorthand_sequences_and_full_task_dependencies(self):
         project=self.load('''[commands]
 check = [["echo", "one"], ["echo", "two"]]
@@ -162,12 +215,21 @@ env={MODE="override"}
         self.assertEqual(project.name, 'demo-project')
         self.assertEqual(make_plan(project, 'doctor').steps[0].argv, ('uname', '-m'))
 
+        delegated = content.replace('# [backend]\n', '[backend]\n').replace(
+            '# command = ["./scripts/project.sh"]', 'command = ["./scripts/project.sh"]').replace(
+            '# actions = ["configure"]', 'actions = ["configure"]')
+        self.config.write_text(delegated)
+        project = read_project(self.config)
+        self.assertEqual(set(project.tasks), {'configure'})
+        self.assertEqual(make_plan(project, 'configure', forwarded=('--mode', 'demo')).steps[0].argv,
+                         ('./scripts/project.sh', 'configure', '--mode', 'demo'))
+
         # Enable all commented TOML declarations, without enabling prose.
         declaration = re.compile(r'^# (?=\[|[A-Za-z_][A-Za-z0-9_-]*\s*=|"[^"]+"\s*=)')
         enabled = '\n'.join(declaration.sub('', line) for line in content.splitlines())
         self.config.write_text(enabled + '\n')
         project = read_project(self.config)
-        for task in ('doctor', 'clone', 'update', 'build', 'test', 'deploy',
+        for task in ('doctor', 'configure', 'clone', 'update', 'build', 'test', 'deploy',
                      'start', 'stop', 'status', 'logs',
                      'clone.all', 'update.all', 'build.all', 'stage.files',
                      'deploy.remote', 'stage.oci', 'stage.registry',

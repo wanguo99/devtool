@@ -72,7 +72,7 @@ flowchart TD
 
 Arrows represent implementation dependencies or explicit calls, not automatic deployment steps. The runtime has no dependency on the configuration, planning or execution layers. Directory identity and archive validation no longer import the staging transport. Docker image identity is shared at the runtime boundary instead of being implemented by the registry adapter. OCI archive validation/reconstruction is separate from Docker save/load and SSH transfer. Source declarations are distinct from Git execution.
 
-Local-only projects do not load the remote delivery, Docker, SSH or Git execution modules to produce a plan. Optional features are imported at their explicit boundaries. The architecture regression tests check this in a fresh process and reject upward package dependencies.
+Local-only projects do not load the remote delivery, Docker, SSH or Git execution modules to produce a plan. Optional features are imported at their explicit boundaries. The architecture regression tests check this in a fresh process and reject upward package dependencies. `[backend]` expands each delegated action into a normal `Task`; the CLI consumes only engine controls and supplies the remaining argv to the existing planner. Delegation does not introduce a second executor or an application-specific adapter inside the engine.
 
 ## Extending the engine
 

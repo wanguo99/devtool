@@ -28,6 +28,8 @@ groups = ["legacy"]
 
 The catalog generates `clone.<group>`/`update.<group>` and per-source internal tasks, which participate in ordinary task dependencies and plans. Do not define competing task names for the same groups. Git is a project tool required to execute these tasks, not a dependency to run Devtool itself.
 
+Alternatively, if `[backend].actions` includes `clone` or `update`, the engine validates the catalog but leaves that action to the project backend. This enables a single configuration file for projects with additional source preparation policies. Without delegation, a simple `url` and optional `branch` are sufficient; `revision` is not required.
+
 ## Input and artifact contracts
 
 ```toml

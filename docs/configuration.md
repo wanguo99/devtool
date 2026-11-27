@@ -22,6 +22,23 @@ Every key is a task name. Quoted keys with dots support modules (`"build.web"`).
 
 There is no implicit shell, glob expansion, variable expansion, pipeline or redirection. For shell syntax use a checked-in script or an explicit argument array such as `["sh", "-c", "check && build"]`. The latter is deliberately executable shell code, so keep it in reviewed, trusted project configuration. Use literal argv for parameters that must remain single arguments.
 
+## Delegate an existing project backend
+
+Projects that already expose their own CLI can avoid duplicate argument schemas:
+
+```toml
+[backend]
+command = ["python3", "-m", "my_project"]
+actions = ["clone", "update", "build", "deploy"]
+
+[sources]
+component = { url = "https://example.invalid/component.git", branch = "main" }
+```
+
+`command` is one command string or argv array, and `actions` is a nonempty list of unique action names. Each creates a single recorded task. `devtool build api --jobs 8` passes `build api --jobs 8` to the backend; modules, values, unknown options and `--help` belong to the backend, not a duplicate Devtool mapping. The engine reserves `--dry-run`, `--check`, `--json` and `--set NAME=VALUE`; any argument after an explicit `--` is passed literally to the backend, including otherwise reserved flags. `devtool plan build api --jobs 8` is read-only and shows the exact outer invocation. `--check` checks that invocation's local prerequisites, not arbitrary backend internals. Use a backend-specific plan when one is needed. The command still receives the ordinary default environment and is executed in the project root, under the normal project lock, with the same logs and exit status handling.
+
+Do not define an explicit task or alias under a delegated action's name (including dotted modules). Engine-owned commands remain reserved. Nondelegated commands/tasks and typed parameters continue to work unchanged. When `clone` or `update` is delegated, its native generated source tasks are suppressed; the existing backend may read the same `[sources]` declarations and implement its own layout, submodules or dependencies. The source catalog remains validated. When neither is delegated, native source tasks work as before.
+
 ## Project metadata and modules
 
 ```toml

@@ -127,6 +127,7 @@ class Project:
     default_module: str = "all"
     targets: dict[str, Target] = field(default_factory=dict)
     options: dict[str, Option] = field(default_factory=dict)
+    backend_actions: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

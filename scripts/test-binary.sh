@@ -25,6 +25,17 @@ transfers = [{kind="archive-pack",source="data",destination="bundle.tar.gz"}]
 [tasks.import]
 transfers = [{kind="archive-unpack",source="bundle.tar.gz",destination="restored"}]
 TOML
+cat > "$scratch/delegated.toml" <<'TOML'
+[backend]
+command = ["sh", "backend.sh"]
+actions = ["clone", "update", "build"]
+[sources.fixture]
+url = "https://example.invalid/fixture.git"
+branch = "main"
+TOML
+cat > "$scratch/backend.sh" <<'SH'
+printf '%s\n' "$@" > received.txt
+SH
 docker run --rm --network none --user "$(id -u):$(id -g)" -e HOME=/tmp -e DEVTOOL_STATE_HOME=/tmp/state \
     --mount "type=bind,source=$scratch,target=/project" --workdir /project debian:bullseye-slim sh -eu -c '
     if command -v python3 >/dev/null; then echo "Test image unexpectedly contains Python" >&2; exit 1; fi
@@ -48,5 +59,11 @@ docker run --rm --network none --user "$(id -u):$(id -g)" -e HOME=/tmp -e DEVTOO
     ./devtool artifact fetch --url file:///project/data/text --output cached.txt --sha256 "$digest"
     cmp data/text cached.txt
     ./devtool history --limit 1 >/tmp/history.json
-    echo "No-Python executable and internal archive helper: PASS"
+    ./devtool --project delegated.toml validate >/tmp/delegated-config.json
+    ./devtool --project delegated.toml plan clone fixture --list >/tmp/delegated-plan.json
+    test ! -e received.txt
+    ./devtool --project delegated.toml build ran --platform arm64 --jobs 8 --path "with spaces"
+    printf "%s\n" build ran --platform arm64 --jobs 8 --path "with spaces" > expected.txt
+    cmp received.txt expected.txt
+    echo "No-Python executable, delegated options and internal archive helper: PASS"
 '

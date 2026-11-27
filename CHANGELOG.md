@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.0 — Minimal backend delegation
+
+- Add optional `[backend]` with only `command` and `actions`. Delegate business options and module names unchanged, while retaining the normal read-only planner, local preflight, project lock, execution records and JSON result. Existing `[commands]`, typed options and task workflows remain compatible.
+- Allow one `[sources]` catalog in the project configuration even when a project backend owns clone/update. Suppress native generated tasks for delegated actions rather than create conflicting tasks; preserve native source behavior for other projects.
+- Document the minimal configuration and delegated help; test direct and forwarded arguments (including spaces and multi-value options), engine controls, source layout ownership and configuration conflicts.
+
 ## 0.11.0 — Modular engine and adapter boundaries
 
 - Reorganize the flat implementation into CLI, configuration, planning, execution, runtime, artifact, delivery and source packages with narrow responsibilities. Separate parameter resolution, task parsing, subprocess/log handling, OCI archive processing, and transport dispatch.

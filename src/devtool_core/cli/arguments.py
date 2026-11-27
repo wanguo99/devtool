@@ -98,3 +98,10 @@ def overrides(items: list[str]):
             raise DevtoolError("--set requires unique NAME=VALUE assignments")
         values[key] = value
     return values
+
+
+def backend_arguments(argv):
+    """Consume only engine controls; leave application arguments in their order."""
+    controls = argparse.ArgumentParser(prog="devtool", add_help=False, allow_abbrev=False)
+    task_arguments(controls)
+    return controls.parse_known_args(argv)

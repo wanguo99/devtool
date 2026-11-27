@@ -15,7 +15,7 @@ from ..execution.runner import execute
 from ..execution.preflight import inspect_plan
 from ..execution.state import StateStore, state_directory
 from ..execution.secrets import secret_values
-from .arguments import ACTIONS, CORE_COMMANDS, command_index, selected_action, parser, overrides
+from .arguments import ACTIONS, CORE_COMMANDS, command_index, selected_action, parser, overrides, backend_arguments
 
 
 def init_project(path: str | None, name: str | None):
@@ -66,6 +66,23 @@ def direct_plan(project, args):
     return Plan(project.name, project.root, "exec", ("exec",), (step,), {}, ("project",))
 
 
+def finish_plan(plan, *, display=False, check=False, json_output=False):
+    if display or check:
+        data = plan.public()
+        status = 0
+        if check:
+            checks = inspect_plan(plan)
+            data["preflight"] = checks
+            missing_paths = [str(path) for mapping in (plan.required_paths, plan.verify_manifests) for paths in mapping.values() for path in paths if not path.exists()]
+            data["missing_required_paths"] = missing_paths
+            missing_tools = [tool for tools in plan.required_tools.values() for tool in tools if not shutil.which(tool)]
+            data["missing_required_tools"] = missing_tools
+            status = 0 if not missing_paths and not missing_tools and all(item["cwd_exists"] and item["command_available"] and not item["missing_secret_references"] and not item["missing_tools"] for item in checks) else 1
+        print(json.dumps(secret_values(plan).data(data), indent=2, ensure_ascii=False))
+        return status
+    return execute(plan, json_output=json_output)
+
+
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     index=command_index(argv)
@@ -94,13 +111,34 @@ def main(argv=None):
         preloaded=None
         # Project-specific flags are an optional configuration extension. Load
         # the project once before parsing them; never load providers for help.
-        if (ID.fullmatch(action) and action not in {"init","list","validate","history","show","exec","artifact","plan"}
-                and "--help" not in argv and "-h" not in argv):
+        if ID.fullmatch(action) and (action not in CORE_COMMANDS or action == "task"):
             prefix_parser=argparse.ArgumentParser(add_help=False)
             prefix_parser.add_argument("--project")
             prefix_parser.add_argument("--allow-providers",action="store_true")
             prefix=prefix_parser.parse_args(argv[:command_index(argv)])
-            preloaded=project_context(prefix)
+            if "--help" not in argv and "-h" not in argv:
+                preloaded=project_context(prefix)
+            elif action != "task":
+                # Ordinary help must work without a project or provider execution.
+                # A configured backend owns its own action-specific help.
+                try:
+                    config = find_config(prefix.project)
+                    with config.open("rb") as stream:
+                        raw = tomllib.load(stream)
+                    backend = raw.get("backend", {})
+                    actions = backend.get("actions", []) if isinstance(backend, dict) else []
+                    if isinstance(actions, list) and action in actions and not raw.get("providers"):
+                        preloaded = read_project(config)
+                except (ConfigNotFound, tomllib.TOMLDecodeError):
+                    pass
+        if preloaded and action in preloaded.backend_actions:
+            outer_index = command_index(argv)
+            planned = argv[outer_index] == "plan"
+            controls, backend = backend_arguments(argv[outer_index + 1 + int(planned):])
+            plan = make_plan(preloaded, action, overrides(controls.overrides),
+                             forwarded=(*backend, *forwarded))
+            return finish_plan(plan, display=planned or controls.dry_run,
+                               check=controls.check, json_output=controls.json)
         args=parser(extra,preloaded.options if preloaded else {}).parse_args(argv)
         if forwarded and action in {"init", "list", "validate", "history", "show"}:
             raise DevtoolError("arguments after -- are only for project tasks or exec")
@@ -135,20 +173,8 @@ def main(argv=None):
                 for value in getattr(args,"project_option_"+flag.replace("-","_"),None) or []:
                     supplied.append(f"{option.parameter}={value}")
             plan = make_plan(project, requested, overrides(supplied), forwarded=forwarded)
-        if args.command == "plan" or args.dry_run or args.check:
-            data = plan.public()
-            status = 0
-            if args.check:
-                checks = inspect_plan(plan)
-                data["preflight"] = checks
-                missing_paths = [str(path) for mapping in (plan.required_paths,plan.verify_manifests) for paths in mapping.values() for path in paths if not path.exists()]
-                data["missing_required_paths"] = missing_paths
-                missing_tools=[tool for tools in plan.required_tools.values() for tool in tools if not shutil.which(tool)]
-                data["missing_required_tools"] = missing_tools
-                status = 0 if not missing_paths and not missing_tools and all(check["cwd_exists"] and check["command_available"] and not check["missing_secret_references"] and not check["missing_tools"] for check in checks) else 1
-            print(json.dumps(secret_values(plan).data(data), indent=2, ensure_ascii=False))
-            return status
-        return execute(plan, json_output=args.json)
+        return finish_plan(plan, display=args.command == "plan" or args.dry_run,
+                           check=args.check, json_output=args.json)
     except KeyboardInterrupt:
         print("devtool: interrupted", file=sys.stderr)
         return 130
