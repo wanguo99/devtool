@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import tomllib
 
 
 ROOT=Path(__file__).resolve().parents[2]
@@ -19,7 +20,7 @@ def status(repo):
     return run(['git','status','--porcelain=v1'],repo)
 
 
-def verify(binary, name, repo, plan_args):
+def verify(binary, name, repo, plan_args, full=False):
     before=status(repo)
     with tempfile.TemporaryDirectory(prefix='devtool-project-config-') as directory:
         view=Path(directory)
@@ -28,7 +29,8 @@ def verify(binary, name, repo, plan_args):
         # Only expose the existing backend implementation; no business files or
         # deployment credentials are copied and no original root launcher is used.
         (view/'tools').symlink_to(repo/'tools',target_is_directory=True)
-        env={**os.environ,'DEVTOOL_STATE_HOME':str(view/'state'),'PYTHONDONTWRITEBYTECODE':'1'}
+        env={**os.environ,'DEVTOOL_STATE_HOME':str(view/'state'),'PYTHONDONTWRITEBYTECODE':'1',
+             'SMART_ALARM_DEVTOOL_CONTAINER':'0','SMART_ALARM_DEVTOOL_AUTOMATION':'0'}
         executor=view/'devtool'
         task_list=json.loads(run([executor,'validate'],view,env))
         result=json.loads(run([executor,'legacy-help','--json'],view,env))
@@ -36,6 +38,21 @@ def verify(binary, name, repo, plan_args):
         if plan_args:
             result=json.loads(run([executor,'legacy-plan','--json','--',*plan_args],view,env))
             if result['status']!='SUCCEEDED':raise RuntimeError(f'{name}: backend plan failed')
+        if full:
+            config=tomllib.loads((view/'devtool.toml').read_text())
+            commands=[*config.get('commands',{}),*config.get('aliases',{})]
+            tasks=[*commands,*config.get('tasks',{})]
+            for task in tasks:
+                try:
+                    json.loads(run([executor,'plan','task',task],view,env))
+                    # Only forward --help to compatibility commands. Native
+                    # test workflows may contain multiple actual test commands.
+                    if task in commands:
+                        result=json.loads(run([executor,'task',task,'--json','--','--help'],view,env))
+                        if result['status']!='SUCCEEDED':raise RuntimeError('backend help failed')
+                except (subprocess.SubprocessError, ValueError, RuntimeError) as exc:
+                    raise RuntimeError(f'{name}: read-only check failed for {task}') from exc
+            print(f'{name}: {len(tasks)} plans, {len(commands)} backend help calls passed')
         if status(repo)!=before:raise RuntimeError(f'{name}: original checkout status changed')
         print(f'{name}: {len(task_list["tasks"])} configured tasks; binary/backend read-only smoke passed')
 
@@ -43,12 +60,13 @@ def verify(binary, name, repo, plan_args):
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary',type=Path,required=True)
+    parser.add_argument('--full',action='store_true',help='plan every task and execute only compatibility command help')
     for name in ('smart-alarm','zippos','ntn-workspace'):
         parser.add_argument('--'+name,type=Path,required=True)
     args=parser.parse_args()
-    verify(args.binary.resolve(),'smart-alarm',args.smart_alarm.resolve(),None)
-    verify(args.binary.resolve(),'zippos',args.zippos.resolve(),['build','all'])
-    verify(args.binary.resolve(),'ntn-workspace',args.ntn_workspace.resolve(),['build','all','--platform','phytium'])
+    verify(args.binary.resolve(),'smart-alarm',args.smart_alarm.resolve(),None,args.full)
+    verify(args.binary.resolve(),'zippos',args.zippos.resolve(),['build','all'],args.full)
+    verify(args.binary.resolve(),'ntn-workspace',args.ntn_workspace.resolve(),['build','all','--platform','phytium'],args.full)
 
 
 if __name__=='__main__':main()

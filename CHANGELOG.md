@@ -4,6 +4,7 @@
 
 - Support escaped double braces in configured arguments, including Docker's Go templates for container status and diagnostics. Preserve literal data within parameter values without a second pass through the template parser. Keep unknown and malformed placeholders strict.
 - Add regression coverage for literal braces, mixed parameters and malformed templates, following the real ARM64 deployment validation.
+- Validate all three existing project configurations: 156 task/alias plans and 150 compatibility-command help calls, all application test workflows, real web build artifacts, and isolated SSH/rsync/OCI/offline-image deployment on an actual ARM64 host. Verify test-resource cleanup against the original host inventory. Add an optional repeatable full read-only compatibility matrix.
 
 ## 0.10.0 — Offline image sets and existing-project configurations
 
